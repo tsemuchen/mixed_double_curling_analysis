@@ -91,6 +91,7 @@ opening_by_team_end <- stones_type %>%
     min_points   = min(Points, na.rm = TRUE),
     .groups = "drop"
   )
+```
 </details>
 
 To build the fourth-shot dataset, we extract the row in Stones_plus that corresponds to the fourth shot in each end and join onto it the opening sequence and execution measures for both teams. This results in a compact description of how each end has unfolded up to that moment from both the hammer team and the opponent.
