@@ -50,13 +50,254 @@ library(mgcv)
 library(caret)
 library(xgboost)
 library(pROC)
+
+competition  <- read.csv("Competition.csv",  stringsAsFactors = FALSE)
+competitors  <- read.csv("Competitors.csv",  stringsAsFactors = FALSE)
+ends         <- read.csv("Ends.csv",         stringsAsFactors = FALSE)
+games        <- read.csv("Games.csv",        stringsAsFactors = FALSE)
+stones       <- read.csv("Stones.csv",       stringsAsFactors = FALSE)
+teams        <- read.csv("Teams.csv",        stringsAsFactors = FALSE)
+
+Stones_plus <- stones %>%
+  group_by(CompetitionID, SessionID, GameID, EndID) %>%
+  arrange(ShotID, .by_group = TRUE) %>%
+  mutate(n_stone_thrown = row_number()) %>%
+  ungroup()
+
+Stones_plus <- Stones_plus %>%  
+  left_join(ends) %>% 
+  mutate(PowerPlay = ifelse(is.na(PowerPlay), 0, PowerPlay)) %>% 
+  group_by(CompetitionID, SessionID, GameID, EndID) %>% 
+  mutate(pp_end = sum(PowerPlay) > 0) %>% 
+  ungroup()
+
+#find which team throws first
+end_first <- Stones_plus |>
+  group_by(CompetitionID, SessionID, GameID, EndID) |>
+  slice_min(ShotID, n = 1, with_ties = FALSE) |>
+  summarise(
+    team_first = first(TeamID),
+    .groups = "drop"
+  )
+
+# all teams appearing in each end
+end_team_ids <- Stones_plus |>
+  distinct(CompetitionID, SessionID, GameID, EndID, TeamID)
+
+# map each end to team_first and team_second
+end_teams <- end_team_ids |>
+  left_join(end_first,
+            by = c("CompetitionID", "SessionID", "GameID", "EndID")) |>
+  group_by(CompetitionID, SessionID, GameID, EndID) |>
+  summarise(
+    team_first  = first(team_first),
+    team_second = TeamID[TeamID != first(team_first)][1],
+    .groups = "drop"
+  )
+
+# attach to Stones_plus
+Stones_plus <- Stones_plus |>
+  left_join(end_teams,
+            by = c("CompetitionID", "SessionID", "GameID", "EndID"))
 ```
 </details>
 
 Scoring in curling depends on which team has the stone closest to the button. Using the stone coordinates in Stones.csv, we compute the distance from each stone to the button. From these distances, we determine (i) which team is currently in the scoring position, (ii) how many of that team’s stones lie closer to the button than the opponent’s nearest stone, and (iii) the number of stones in each scoring ring (button, 2-foot, 4-foot, and 6-foot). These derived features summarize the scoring landscape for each end.
 
-#distance function and other related 
 
+<details>
+<summary><strong>Generate distance function and other columns</strong></summary>
+
+<br>
+
+```r
+#stone distance from the target
+stone_dist <- function(x, y) {
+  out_of_play <- x %in% c(0, 4095) | y %in% c(0, 4095)
+  d <- sqrt((x - 750)^2 + (y - 800)^2)
+  d[out_of_play] <- NA_real_
+  d
+}
+
+Stones_plus <- Stones_plus |>
+  mutate(
+    stone_1_dist  = stone_dist(stone_1_x,  stone_1_y),
+    stone_2_dist  = stone_dist(stone_2_x,  stone_2_y),
+    stone_3_dist  = stone_dist(stone_3_x,  stone_3_y),
+    stone_4_dist  = stone_dist(stone_4_x,  stone_4_y),
+    stone_5_dist  = stone_dist(stone_5_x,  stone_5_y),
+    stone_6_dist  = stone_dist(stone_6_x,  stone_6_y),
+    stone_7_dist  = stone_dist(stone_7_x,  stone_7_y),
+    stone_8_dist  = stone_dist(stone_8_x,  stone_8_y),
+    stone_9_dist  = stone_dist(stone_9_x,  stone_9_y),
+    stone_10_dist = stone_dist(stone_10_x, stone_10_y),
+    stone_11_dist = stone_dist(stone_11_x, stone_11_y),
+    stone_12_dist = stone_dist(stone_12_x, stone_12_y)
+  )
+foot_to_units <- 100
+
+r_6ft   <- 6   * foot_to_units  # 600  (outer house)
+r_4ft   <- 4   * foot_to_units  # 400
+r_2ft   <- 2   * foot_to_units  # 200
+r_6inch <- 0.5 * foot_to_units  # 50   (button)
+
+Stones_plus <- Stones_plus |>
+  mutate(
+    # ---- team that throws first: stones 1–6 ----
+    n_button_first = rowSums(
+      cbind(
+        stone_1_dist <= r_6inch,
+        stone_2_dist <= r_6inch,
+        stone_3_dist <= r_6inch,
+        stone_4_dist <= r_6inch,
+        stone_5_dist <= r_6inch,
+        stone_6_dist <= r_6inch
+      ),
+      na.rm = TRUE
+    ),
+    n_2ft_first = rowSums(
+      cbind(
+        stone_1_dist > r_6inch & stone_1_dist <= r_2ft,
+        stone_2_dist > r_6inch & stone_2_dist <= r_2ft,
+        stone_3_dist > r_6inch & stone_3_dist <= r_2ft,
+        stone_4_dist > r_6inch & stone_4_dist <= r_2ft,
+        stone_5_dist > r_6inch & stone_5_dist <= r_2ft,
+        stone_6_dist > r_6inch & stone_6_dist <= r_2ft
+      ),
+      na.rm = TRUE
+    ),
+    n_4ft_first = rowSums(
+      cbind(
+        stone_1_dist > r_2ft & stone_1_dist <= r_4ft,
+        stone_2_dist > r_2ft & stone_2_dist <= r_4ft,
+        stone_3_dist > r_2ft & stone_3_dist <= r_4ft,
+        stone_4_dist > r_2ft & stone_4_dist <= r_4ft,
+        stone_5_dist > r_2ft & stone_5_dist <= r_4ft,
+        stone_6_dist > r_2ft & stone_6_dist <= r_4ft
+      ),
+      na.rm = TRUE
+    ),
+    n_6ft_first = rowSums(
+      cbind(
+        stone_1_dist > r_4ft & stone_1_dist <= r_6ft,
+        stone_2_dist > r_4ft & stone_2_dist <= r_6ft,
+        stone_3_dist > r_4ft & stone_3_dist <= r_6ft,
+        stone_4_dist > r_4ft & stone_4_dist <= r_6ft,
+        stone_5_dist > r_4ft & stone_5_dist <= r_6ft,
+        stone_6_dist > r_4ft & stone_6_dist <= r_6ft
+      ),
+      na.rm = TRUE
+    ),
+
+    # ---- team that throws second: stones 7–12 ----
+    n_button_second = rowSums(
+      cbind(
+        stone_7_dist  <= r_6inch,
+        stone_8_dist  <= r_6inch,
+        stone_9_dist  <= r_6inch,
+        stone_10_dist <= r_6inch,
+        stone_11_dist <= r_6inch,
+        stone_12_dist <= r_6inch
+      ),
+      na.rm = TRUE
+    ),
+    n_2ft_second = rowSums(
+      cbind(
+        stone_7_dist  > r_6inch & stone_7_dist  <= r_2ft,
+        stone_8_dist  > r_6inch & stone_8_dist  <= r_2ft,
+        stone_9_dist  > r_6inch & stone_9_dist  <= r_2ft,
+        stone_10_dist > r_6inch & stone_10_dist <= r_2ft,
+        stone_11_dist > r_6inch & stone_11_dist <= r_2ft,
+        stone_12_dist > r_6inch & stone_12_dist <= r_2ft
+      ),
+      na.rm = TRUE
+    ),
+    n_4ft_second = rowSums(
+      cbind(
+        stone_7_dist  > r_2ft & stone_7_dist  <= r_4ft,
+        stone_8_dist  > r_2ft & stone_8_dist  <= r_4ft,
+        stone_9_dist  > r_2ft & stone_9_dist  <= r_4ft,
+        stone_10_dist > r_2ft & stone_10_dist <= r_4ft,
+        stone_11_dist > r_2ft & stone_11_dist <= r_4ft,
+        stone_12_dist > r_2ft & stone_12_dist <= r_4ft
+      ),
+      na.rm = TRUE
+    ),
+    n_6ft_second = rowSums(
+      cbind(
+        stone_7_dist  > r_4ft & stone_7_dist  <= r_6ft,
+        stone_8_dist  > r_4ft & stone_8_dist  <= r_6ft,
+        stone_9_dist  > r_4ft & stone_9_dist  <= r_6ft,
+        stone_10_dist > r_4ft & stone_10_dist <= r_6ft,
+        stone_11_dist > r_4ft & stone_11_dist <= r_6ft,
+        stone_12_dist > r_4ft & stone_12_dist <= r_6ft
+      ),
+      na.rm = TRUE
+    )
+  )
+
+# which team is in the scoring postition 
+Stones_plus <- Stones_plus |>
+  rowwise() |>
+  mutate(
+    # closest stone for team_first (stones 1–6)
+    closest_first = min(
+      c_across(c(stone_1_dist, stone_2_dist, stone_3_dist,
+                 stone_4_dist, stone_5_dist, stone_6_dist)),
+      na.rm = TRUE
+    ),
+    # closest stone for team_second (stones 7–12)
+    closest_second = min(
+      c_across(c(stone_7_dist, stone_8_dist, stone_9_dist,
+                 stone_10_dist, stone_11_dist, stone_12_dist)),
+      na.rm = TRUE
+    ),
+    # if all distances are NA for a side, min(..., na.rm=TRUE) is Inf -> set to NA
+    closest_first  = ifelse(is.infinite(closest_first),  NA_real_, closest_first),
+    closest_second = ifelse(is.infinite(closest_second), NA_real_, closest_second),
+
+    scoring_team_order = case_when(
+      !is.na(closest_first)  & (is.na(closest_second) | closest_first <= closest_second) ~ "first",
+      !is.na(closest_second) & (is.na(closest_first)  | closest_second <  closest_first) ~ "second",
+      TRUE ~ NA_character_
+    ),
+    scoring_teamID = case_when(
+      scoring_team_order == "first"  ~ team_first,
+      scoring_team_order == "second" ~ team_second,
+      TRUE ~ NA_integer_
+    )
+  ) |>
+  ungroup()
+Stones_plus <- Stones_plus |>
+  rowwise() |>
+  mutate(
+    # How many FIRST team stones are closer than second's best stone?
+    n_first_closer_than_second = if (!is.na(closest_second)) {
+      sum(c_across(c(stone_1_dist, stone_2_dist, stone_3_dist,
+                     stone_4_dist, stone_5_dist, stone_6_dist)) < closest_second,
+          na.rm = TRUE)
+    } else {
+      NA_integer_
+    },
+
+    # How many SECOND team stones are closer than first's best stone?
+    n_second_closer_than_first = if (!is.na(closest_first)) {
+      sum(c_across(c(stone_7_dist, stone_8_dist, stone_9_dist,
+                     stone_10_dist, stone_11_dist, stone_12_dist)) < closest_first,
+          na.rm = TRUE)
+    } else {
+      NA_integer_
+    },
+
+    projected_points_scoring = case_when(
+      scoring_team_order == "first"  ~ n_first_closer_than_second,
+      scoring_team_order == "second" ~ n_second_closer_than_first,
+      TRUE ~ NA_integer_
+    )
+  ) |>
+  ungroup()
+```
+</details>
 
 ### 2.2 Feature Engineering and Modeling Dataset Construction
 
