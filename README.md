@@ -13,7 +13,7 @@ In a competitive mixed doubles curling match, the opening plays can quietly shap
 
 ### 2.1  Reconstructing End States From Stone-Level Data
 
-The data were collected from games played in the 2026 Connecticut Sports Analytics Symposium competition, downloaded from this GitHub(https://github.com/CSAS-Data-Challenge/2026) page. Starting from the Stones.csv dataset, we first assign a shot order number within each end, then join this information with Ends.csv to determine whether the end is a power play. Because the team that throws second in an end holds the hammer, identifying the team that throws first allows us to infer hammer ownership for that end.
+The data were collected from games played in the 2026 Connecticut Sports Analytics Symposium competition, downloaded from this [GitHub](https://github.com/CSAS-Data-Challenge/2026) page. Starting from the Stones.csv dataset, we first assign a shot order number within each end, then join this information with Ends.csv to determine whether the end is a power play. Because the team that throws second in an end holds the hammer, identifying the team that throws first allows us to infer hammer ownership for that end.
 
 #stone_plus set up and team order column
 
