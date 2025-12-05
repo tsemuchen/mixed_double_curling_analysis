@@ -33,8 +33,12 @@ code
 
 The data were collected from games played in the 2026 Connecticut Sports Analytics Symposium competition, downloaded from this [GitHub](https://github.com/CSAS-Data-Challenge/2026) page. Starting from the Stones.csv dataset, we first assign a shot order number within each end, then join this information with Ends.csv to determine whether the end is a power play. Because the team that throws second in an end holds the hammer, identifying the team that throws first allows us to infer hammer ownership for that end.
 
-Library:
-```
+<details>
+<summary><strong>Library</strong></summary>
+
+<br>
+
+```r
 library(dplyr)
 library(tidyverse)
 library(ggplot2)
@@ -47,6 +51,7 @@ library(caret)
 library(xgboost)
 library(pROC)
 ```
+</details>
 
 Scoring in curling depends on which team has the stone closest to the button. Using the stone coordinates in Stones.csv, we compute the distance from each stone to the button. From these distances, we determine (i) which team is currently in the scoring position, (ii) how many of that team’s stones lie closer to the button than the opponent’s nearest stone, and (iii) the number of stones in each scoring ring (button, 2-foot, 4-foot, and 6-foot). These derived features summarize the scoring landscape for each end.
 
@@ -527,14 +532,15 @@ glm_w <- glm(
 Taken together, these models allow us to examine strategy effectiveness from multiple angles. Mixed-effects models control for team variation, GAMs allow for flexible functional forms, XGBoost tests predictive strength in a nonparametric way, and propensity weighting provides an approximate causal perspective. Later sections compare these models and interpret their implications for opening-strategy decision making.
 
 Model Comparison Table
-| Model Type                     | Purpose / What It Captures                                      | Strengths                                             | Limitations / Assumptions                                  | Role in Analysis |
-|-------------------------------|------------------------------------------------------------------|-------------------------------------------------------|------------------------------------------------------------|------------------|
-| **LMM (Linear Mixed Model)**  | Estimates association between strategy/execution and scoring, accounting for team-level variation. | Simple, interpretable; controls for random team effects. | Treats binary outcome as approximately continuous; may misrepresent probability scale. | Structured baseline; robustness check against link-choice artifacts. |
-| **GLMM (Logistic Mixed Model)** | Models probability of scoring using fixed effects + random team effects. | Proper binary-outcome modeling; adjusts for latent team strength. | Still assumes linear predictor + logistic link; limited nonlinear flexibility. | Main structured model for strategy effects after controlling for team differences. |
-| **Reduced GLMM (Execution-Only)** | Evaluates contribution of opening strategy and execution without board-state variables. | Isolates execution effects; tests whether strategy matters when position is excluded. | Omits important board-state information; risk of omitted-variable bias. | Diagnostic model for separating execution quality from positional factors. |
-| **GAM (Generalized Additive Model)** | Allows nonlinear scoring effects of execution quality and stone-position metrics. | Flexible, interpretable smooth terms; detects thresholds/diminishing returns. | More complex; requires smoothing choices; still additive. | Tests for nonlinear effects in early-end board position and execution. |
-| **XGBoost (Gradient Boosted Trees)** | Learns complex nonlinear interactions for prediction. | Strong predictive power; automatic interaction detection; feature importance. | Less interpretable; not causal; prone to overfitting without tuning. | Predictive benchmark; highlights which features drive model performance. |
-| **Propensity-Weighted Model** | Approximates causal effect of attack-first vs build-first openings. | Balances strategy groups; reduces confounding from team-specific tendencies. | Requires overlap and correct propensity model; still observational. | Estimates causal contrast between opening types under balanced comparisons. |
+| Model Type                     | What It Captures                           | Strengths                                   | Limitations                               | Purpose in Study |
+|-------------------------------|---------------------------------------------|----------------------------------------------|--------------------------------------------|------------------|
+| **LMM**                       | Strategy/execution effects with team variation | Simple, interpretable; controls team effects | Mis-specifies binary outcome               | Baseline structured model |
+| **GLMM**                      | Probability of scoring with team effects      | Proper binary modeling; adjusts for teams     | Assumes linear predictor + logistic link    | Main inferential model |
+| **Reduced GLMM**             | Strategy + execution without board-state features | Isolates execution’s role                    | Omits positional info                       | Diagnostic comparison |
+| **GAM**                       | Nonlinear effects of execution + board position | Flexible smooth terms; still interpretable    | More complex; additive structure            | Tests nonlinear patterns |
+| **XGBoost**                   | Complex interactions for prediction            | High predictive power; captures interactions  | Low interpretability; not causal            | Predictive benchmark |
+| **Propensity Model**          | Causal contrast of attack-first vs build-first | Balances groups; reduces confounding          | Sensitive to overlap and model choice       | Approximate causal estimate |
+
 
 
 
