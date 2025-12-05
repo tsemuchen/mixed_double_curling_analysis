@@ -15,7 +15,16 @@ In a competitive mixed doubles curling match, the opening plays can quietly shap
 
 The data were collected from games played in the 2026 Connecticut Sports Analytics Symposium competition, downloaded from this [GitHub](https://github.com/CSAS-Data-Challenge/2026) page. Starting from the Stones.csv dataset, we first assign a shot order number within each end, then join this information with Ends.csv to determine whether the end is a power play. Because the team that throws second in an end holds the hammer, identifying the team that throws first allows us to infer hammer ownership for that end.
 
-#stone_plus set up and team order column
+```
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(scales)
+library(tidyr)
+library(lme4)
+library(Matrix)
+library(scales)  
+```
 
 Scoring in curling depends on which team has the stone closest to the button. Using the stone coordinates in Stones.csv, we compute the distance from each stone to the button. From these distances, we determine (i) which team is currently in the scoring position, (ii) how many of that team’s stones lie closer to the button than the opponent’s nearest stone, and (iii) the number of stones in each scoring ring (button, 2-foot, 4-foot, and 6-foot). These derived features summarize the scoring landscape for each end.
 
