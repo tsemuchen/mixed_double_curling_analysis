@@ -249,26 +249,9 @@ model_df <- model_df %>%
 ### 2.3 Model Design & Developement
 
 With the modeling dataset constructed at the fourth-shot state of each end, our goal is to understand how opening strategies, execution quality, and early board position relate to scoring outcomes. Because these relationships may involve both structured effects (such as team-level tendencies) and more flexible patterns (such as nonlinear effects of execution quality), we employ a set of complementary modeling approaches. Each model type is chosen to address a particular aspect of the problem, and together they allow us to assess strategy effectiveness from statistical, predictive, and causal perspectives.
-We begin with linear mixed-effects regression (LMM) and generalized linear mixed-effects models (GLMM). Curling teams vary in strength, style, and consistency, and these differences can influence both strategy and outcomes. Mixed-effects models allow us to control for these latent team characteristics by including random intercepts for both the hammer team and the opposing team. Both models use the same binary scoring indicator as the response. The LMM treats this indicator as approximately continuous, while the GLMM uses a logistic link to model the log-odds of scoring. Using both formulations allows us to examine whether conclusions about strategic effects are robust to the assumed relationship between predictors and the outcome.
 
-<details>
-<summary><strong>Linear Mixed-Effects Regression (LMM)</strong></summary>
+We begin with a **generalized linear mixed-effects model (GLMM)**, which accounts for variation in team strength and style by including random intercepts for both the hammer team and the opposing team. The GLMM models the log-odds of scoring as a function of opening strategy, execution quality, and early board-state features. This model serves as a structured baseline that tests whether strategic and positional factors exhibit systematic associations with scoring after controlling for latent team-level tendencies.
 
-<br>
-
-```r
-m1 <- lmer(
-  win_end ~
-    opening_strategy_4th * pp_end +
-    opening_strategy_opp +
-    net_button + net_2ft + net_4ft + net_6ft +
-    closest_diff +
-    avg_points_4th + avg_points_opp +
-    (1 | TeamID_4th) + (1 | OppTeamID),
-  data = model_df
-)
-```
-</details>
 
 <details>
 <summary><strong>Logistic Mixed-Effects Model (GLMM)</strong></summary>
@@ -307,7 +290,7 @@ m_bin <- glmer(
 ```
 </details>
 
-To study the role of shot execution separately from board-position features, we also consider a reduced GLMM that includes execution quality but removes the engineered board-state variables. This model helps isolate whether strategy and shot quality alone have any explanatory value, independent of the more detailed positional features.
+To study the role of shot execution separately from board-position features, we also consider a **reduced GLMM** that retains execution quality but removes the engineered board-state variables. This specification helps isolate whether opening choice and execution alone provide explanatory power independent of the more detailed positional measures.
 
 <details>
 <summary><strong>Reduced / Execution-Only Model</strong></summary>
@@ -327,7 +310,7 @@ m_exec_only <- glmer(
 ```
 </details>
 
-Because some relationships may not be strictly linear, particularly those involving execution quality scores or small differences in stone placement, we incorporate a generalized additive model (GAM). GAMs preserve interpretability while allowing smooth nonlinear effects, which makes them well suited for examining whether improvements in execution quality or relative stone position have diminishing, accelerating, or threshold-like effects on scoring probability.
+Because some relationships may not be strictly linear—particularly those involving execution scores or small differences in stone placement—we incorporate a **generalized additive model (GAM)**. GAMs preserve interpretability while allowing smooth nonlinear effects, making them well suited for examining whether improvements in execution or stone position exhibit diminishing returns, threshold effects, or other nonlinear patterns that a parametric model might miss.
 
 <details>
 <summary><strong>Generalized Additive Model (GAM)</strong></summary>
@@ -350,7 +333,7 @@ gam1 <- gam(
 ```
 </details>
 
-To complement these interpretable models, we also include a gradient boosted decision tree model (XGBoost). Tree-based models can capture higher-order interactions and complex, nonlinear patterns that are difficult to specify manually. Although they are less interpretable, they serve as a useful benchmark for predictive performance and provide variable-importance summaries that highlight which features contribute most strongly to outcome prediction.
+To complement these interpretable models, we include a **gradient boosted decision tree model (XGBoost)**. Tree-based methods are adept at capturing complex interactions and nonlinearities without requiring manual specification. Although they are less interpretable, they offer a useful predictive benchmark and provide variable-importance summaries, which help identify the features most strongly associated with scoring in a flexible, nonparametric framework.
 
 <details>
 <summary><strong>XGBoost</strong></summary>
@@ -427,10 +410,10 @@ xgb.plot.importance(imp, top_n = 20)
 ```
 </details>
 
-Finally, because opening strategy may be influenced by team-specific factors that also affect scoring, we incorporate a propensity-score weighting approach to approximate a causal comparison between attack-first and build-first openings. This framework models the probability that a team chooses an attack-oriented opening, uses those probabilities to weight observations, and then fits a weighted outcome model that estimates how strategy choice relates to scoring under better-balanced comparisons.
+Finally, because opening strategy may itself be influenced by team characteristics that also affect scoring, we incorporate a **propensity-score weighting model** to approximate a causal comparison between attack-first and build-first openings. This framework estimates the probability that a team selects an attack-oriented opening, uses those probabilities to reweight the data, and then fits a weighted outcome model to assess how strategy relates to scoring under better-balanced comparisons.
 
 <details>
-<summary><strong>Causal Comparison</strong></summary>
+<summary><strong>Propensity Model</strong></summary>
 
 <br>
 
@@ -528,18 +511,17 @@ glm_w <- glm(
 ```
 </details>
 
-
-Taken together, these models allow us to examine strategy effectiveness from multiple angles. Mixed-effects models control for team variation, GAMs allow for flexible functional forms, XGBoost tests predictive strength in a nonparametric way, and propensity weighting provides an approximate causal perspective. Later sections compare these models and interpret their implications for opening-strategy decision making.
+Taken together, these models allow us to examine strategy effectiveness from multiple angles. GLMMs control for team-level differences, the reduced model isolates execution effects, GAMs allow for flexible functional forms, XGBoost evaluates predictive structure, and propensity weighting provides an approximate causal perspective. Later sections compare their results and summarize their implications for opening-strategy decision making.
 
 Model Comparison Table
-| Model Type                     | What It Captures                           | Strengths                                   | Limitations                               | Purpose in Study |
-|-------------------------------|---------------------------------------------|----------------------------------------------|--------------------------------------------|------------------|
-| **LMM**                       | Strategy/execution effects with team variation | Simple, interpretable; controls team effects | Mis-specifies binary outcome               | Baseline structured model |
-| **GLMM**                      | Probability of scoring with team effects      | Proper binary modeling; adjusts for teams     | Assumes linear predictor + logistic link    | Main inferential model |
-| **Reduced GLMM**             | Strategy + execution without board-state features | Isolates execution’s role                    | Omits positional info                       | Diagnostic comparison |
-| **GAM**                       | Nonlinear effects of execution + board position | Flexible smooth terms; still interpretable    | More complex; additive structure            | Tests nonlinear patterns |
-| **XGBoost**                   | Complex interactions for prediction            | High predictive power; captures interactions  | Low interpretability; not causal            | Predictive benchmark |
-| **Propensity Model**          | Causal contrast of attack-first vs build-first | Balances groups; reduces confounding          | Sensitive to overlap and model choice       | Approximate causal estimate |
+| Model Type | Purpose | Strengths | Limitations |
+|------------|---------|-----------|-------------|
+| **GLMM** | Structured baseline relating strategy, execution, and board state to scoring | Controls for team effects; interpretable coefficients | Assumes linear relationships in predictors |
+| **Reduced GLMM** | Isolate execution quality and strategy effects | Tests influence of execution independent of board-state features | Less comprehensive; board state omitted |
+| **GAM** | Model nonlinear effects of execution and stone position | Flexible smooth terms; still interpretable | Higher complexity; may overfit if poorly tuned |
+| **XGBoost** | Predictive benchmark and interaction discovery | Captures complex nonlinear patterns; strong predictive power | Low interpretability |
+| **Propensity Weighting** | Approximate causal comparison of openings | Addresses confounding from strategy selection | Causal validity depends on correct specification of propensity model |
+
 
 
 
