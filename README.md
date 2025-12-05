@@ -770,7 +770,7 @@ Taken together, these models allow us to examine strategy effectiveness from mul
 ### 3. Main Results
 
 <details>
-<summary><strong>Extract opening strategies</strong></summary>
+<summary><strong>Hammer advantage</strong></summary>
 
 <br>
 
@@ -869,6 +869,13 @@ ggplot(avg_by_combo2,
     )
 ```
 </details>
+
+
+<p align="center">
+  <img src="Hameer and Power Play Usage.png" width="450">
+  <br>
+  <em>Figure 1. Hameer and Power Play Usage</em>
+</p>
 
 ### 4. Limitation and Further Development
 
