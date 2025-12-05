@@ -7,6 +7,8 @@ James Chen & Charlie Ko, 12/5/2025
 ## 1. Problem Statement
 In a competitive mixed doubles curling match, the opening plays can quietly shape the final scoring outcome for each end, even though it is hard to tell who is truly leading after only a few  shots. This study aims to identify which early features and strategies most strongly contribute to score in an end, in both Power Play and normal situations, using stone-level data. In particular, we investigate how execution quality, shot selection, and stone position control (e.g., inner-ring/2-ft control) affect end outcomes, and how teams should develop opening strategies to maximize their winning probability for each end, both with or without the hammer.
 
+Curling rules can be found [here](https://worldcurling.org/about/curling/).
+
 ---
 
 ## 2. Data and Methodology
@@ -15,15 +17,19 @@ In a competitive mixed doubles curling match, the opening plays can quietly shap
 
 The data were collected from games played in the 2026 Connecticut Sports Analytics Symposium competition, downloaded from this [GitHub](https://github.com/CSAS-Data-Challenge/2026) page. Starting from the Stones.csv dataset, we first assign a shot order number within each end, then join this information with Ends.csv to determine whether the end is a power play. Because the team that throws second in an end holds the hammer, identifying the team that throws first allows us to infer hammer ownership for that end.
 
+Library:
 ```
 library(dplyr)
 library(tidyverse)
 library(ggplot2)
-library(scales)
-library(tidyr)
+library(ggforce)
+
 library(lme4)
-library(Matrix)
-library(scales)  
+library(mgcv)
+
+library(caret)
+library(xgboost)
+library(pROC)
 ```
 
 Scoring in curling depends on which team has the stone closest to the button. Using the stone coordinates in Stones.csv, we compute the distance from each stone to the button. From these distances, we determine (i) which team is currently in the scoring position, (ii) how many of that team’s stones lie closer to the button than the opponent’s nearest stone, and (iii) the number of stones in each scoring ring (button, 2-foot, 4-foot, and 6-foot). These derived features summarize the scoring landscape for each end.
@@ -37,7 +43,55 @@ After reconstructing end states, we focus on a consistent point in every end: th
 
 Curling usually involves two broad kinds of actions. Build-oriented shots, such as draws and guards, are meant to establish position, create cover, or shape the house in a way that sets up future scoring. These shots rarely involve direct contact with opposing stones. Attack-oriented shots, such as takeouts, hits, tap-backs, and peeling actions, aim to remove or disturb opponent stones and immediately alter the scoring environment. Using this grouping, we map each team’s first two shots into one of four opening sequences: build_build, attack_attack, build_then_attack, and attack_then_build. We also summarize execution quality by averaging the judged shot score (0 to 4) across those two shots.
 
-#Extract opening strategies
+<details>
+<summary><strong>Extract opening strategies (click to show code)</strong></summary>
+
+<br>
+
+```r
+stones_type <- Stones_plus %>%
+  mutate(
+    task_type = case_when(
+      Task %in% c(0, 5)           ~ "draw",        # Draw, Freeze
+      Task %in% c(1, 2)           ~ "guard",       # Front, Guard
+      Task %in% c(6, 7, 8, 9, 10) ~ "hit",         # Take-out variants, clearing
+      Task %in% c(3, 4)           ~ "tap_soft",    # Raise / Tap-back, Wick / Soft peel
+      Task == 11                  ~ "through",
+      Task == 13                  ~ "nostat",
+      TRUE                        ~ "other"
+    )
+  )
+
+opening_by_team_end <- stones_type %>%
+  group_by(CompetitionID, SessionID, GameID, EndID, TeamID) %>%
+  arrange(ShotID, .by_group = TRUE) %>%
+  dplyr::slice(1:2) %>%                       # first two stones this team throws in this end
+  summarise(
+    first_type  = first(task_type),
+    second_type = nth(task_type, 2),
+    opening_pair  = paste(first_type, second_type, sep = "_"),
+    opening_strategy = case_when(
+      first_type  %in% c("draw", "guard") &
+      second_type %in% c("draw", "guard") ~ "build_build",        # both stones building
+
+      first_type  %in% c("hit", "tap_soft") &
+      second_type %in% c("hit", "tap_soft") ~ "attack_attack",    # both stones attacking
+
+      first_type  %in% c("draw", "guard") &
+      second_type %in% c("hit", "tap_soft") ~ "build_then_attack",
+
+      first_type  %in% c("hit", "tap_soft") &
+      second_type %in% c("draw", "guard") ~ "attack_then_build",
+
+      TRUE ~ "other"
+    ),
+
+    # execution summary
+    avg_points   = mean(Points, na.rm = TRUE),
+    min_points   = min(Points, na.rm = TRUE),
+    .groups = "drop"
+  )
+</details>
 
 To build the fourth-shot dataset, we extract the row in Stones_plus that corresponds to the fourth shot in each end and join onto it the opening sequence and execution measures for both teams. This results in a compact description of how each end has unfolded up to that moment from both the hammer team and the opponent.
 We then engineer a set of features that summarize the board state at the time of the fourth shot. Using the ring-level reconstructions from Section 2.1, we convert the raw counts into relative measures from the hammer team’s perspective. These include net differences in stone counts across scoring rings and the difference in each team’s closest stone to the button. When a team has no stone in play, a large, fixed placeholder distance is used so that comparisons remain valid.
