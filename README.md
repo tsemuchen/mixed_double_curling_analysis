@@ -769,6 +769,106 @@ Taken together, these models allow us to examine strategy effectiveness from mul
 
 ### 3. Main Results
 
+<details>
+<summary><strong>Extract opening strategies</strong></summary>
+
+<br>
+
+```r
+hammer_by_end <- stones %>%
+  group_by(CompetitionID, SessionID, GameID, EndID) %>%
+  slice_max(order_by = ShotID, n = 1, with_ties = FALSE) %>%  # last shot
+  ungroup() %>%
+  transmute(
+    CompetitionID, SessionID, GameID, EndID,
+    HammerTeamID = TeamID
+  )
+
+ends_with_hammer <- ends %>%
+  left_join(hammer_by_end,
+            by = c("CompetitionID", "SessionID", "GameID", "EndID")) %>%
+  mutate(
+    HasHammer = (TeamID == HammerTeamID)
+  ) %>%
+  group_by(CompetitionID, SessionID, GameID, EndID) %>%
+  mutate(
+    AnyPowerPlay = any(!is.na(PowerPlay))   # TRUE if this end has a PP by someone
+  ) %>%
+  ungroup()
+
+
+avg_hammer <- ends_with_hammer %>%
+  group_by(HasHammer) %>%
+  summarise(
+    avg_points = mean(Result),
+    n_team_ends = n()
+  )
+
+
+avg_by_combo <- ends_with_hammer %>%
+  mutate(
+    Scenario = case_when(
+      AnyPowerPlay & HasHammer & !is.na(PowerPlay) ~ "Hammer & using power play",
+      
+      AnyPowerPlay & !HasHammer                   ~ "No hammer & during power play",
+      
+      !AnyPowerPlay & HasHammer                   ~ "Hammer & no power play",
+      
+      !AnyPowerPlay & !HasHammer                  ~ "No hammer & no power play",
+      
+      TRUE ~ "Other/Check"  # just in case of weird data
+    )
+  ) %>%
+  group_by(Scenario) %>%
+  summarise(
+    avg_points = mean(Result),
+    n_team_ends = n()
+  )
+
+avg_by_combo2 <- avg_by_combo |>
+  mutate(
+    Hammer = case_when(
+      str_starts(Scenario, "Hammer")   ~ "Hammer",
+      str_starts(Scenario, "No hammer") ~ "No hammer"
+    ),
+    PowerPlay = case_when(
+      str_detect(Scenario, "no power play")      ~ "No power play",
+      str_detect(Scenario, "using power play")   ~ "Power play",
+      str_detect(Scenario, "during power play")  ~ "Power play"
+    )
+  ) |>
+  select(PowerPlay, Hammer, avg_points) |>
+  mutate(
+    Hammer   = factor(Hammer,   levels = c("No hammer", "Hammer")),
+    PowerPlay = factor(PowerPlay, levels = c("No power play", "Power play"))
+  )
+
+pd <- position_dodge(width = 0.7)
+
+ggplot(avg_by_combo2,
+       aes(x = PowerPlay, y = avg_points, fill = Hammer)) +
+    geom_col(position = pd, width = 0.7, alpha = 0.7) +
+    geom_text(aes(label = round(avg_points, 3)),
+              position = pd,
+              vjust = -0.4, size = 3) +
+    scale_fill_manual(
+        values = c(
+            "No hammer" = "red",  # red stone
+            "Hammer"    = "gold"   # yellow stone
+        )
+    ) +
+    labs(
+        x = NULL,
+        y = "Average points",
+        fill = "Hammer",
+        title = "Average points by hammer and power play usage"
+    ) +
+    theme_minimal() +
+    theme(
+        panel.grid.major.x = element_blank()
+    )
+```
+</details>
 
 ### 4. Limitation and Further Development
 
