@@ -254,7 +254,7 @@ We begin with a **generalized linear mixed-effects model (GLMM)**, which account
 
 
 <details>
-<summary><strong>Logistic Mixed-Effects Model (GLMM)</strong></summary>
+<summary><strong>Generalized Linear Mixed-effects ModelGLMM</strong></summary>
 
 <br>
 
@@ -293,7 +293,7 @@ m_bin <- glmer(
 To study the role of shot execution separately from board-position features, we also consider a **reduced GLMM** that retains execution quality but removes the engineered board-state variables. This specification helps isolate whether opening choice and execution alone provide explanatory power independent of the more detailed positional measures.
 
 <details>
-<summary><strong>Reduced / Execution-Only Model</strong></summary>
+<summary><strong>Reduced GLMM</strong></summary>
 
 <br>
 
