@@ -513,7 +513,7 @@ glm_w <- glm(
 
 Taken together, these models allow us to examine strategy effectiveness from multiple angles. GLMMs control for team-level differences, the reduced model isolates execution effects, GAMs allow for flexible functional forms, XGBoost evaluates predictive structure, and propensity weighting provides an approximate causal perspective. Later sections compare their results and summarize their implications for opening-strategy decision making.
 
-Model Comparison Table
+**Model Comparison Table**
 | Model Type | Purpose | Strengths | Limitations |
 |------------|---------|-----------|-------------|
 | **GLMM** | Structured baseline relating strategy, execution, and board state to scoring | Controls for team effects; interpretable coefficients | Assumes linear relationships in predictors |
@@ -547,3 +547,9 @@ Apply visual deep-learning methods to stone-position “images”
 
 Build an in-game recommendation tool to evaluate shot and strategy options across different scenarios
  - Develop easily interpretable tables that summarize how each team typically performs in different score situations (e.g., tied, down 1, up 2), how aggressive they are with the hammer, and how often they generate steals when trailing.
+
+### Appendix
+
+#Some other codes or plots (dimension, visualization code, etc)
+
+
