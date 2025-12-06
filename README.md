@@ -760,7 +760,7 @@ Taken together, these models allow us to examine strategy effectiveness from mul
 
 ### 3. Results
 
-The team with hammer wins the end about 70% of the time, confirming a clear strategic advantage in mixed doubles curling. This advantage becomes even more significant in Power Play situations, where the hammer win rate rises to nearly 80%. The scoring patterns in the figure reinforce this: hammer teams average 1.36 points without a Power Play and increase to 1.64 points when using it, while non-hammer teams score well below 1 point in all cases (fg. 1). Together, these results show that both hammer ownership and Power Play deployment substantially boost a team’s ability to control and capitalize on an end.
+The team with hammer wins the end about 70% of the time, confirming a clear strategic advantage in mixed doubles curling. This advantage becomes even more significant in Power Play situations, where the hammer win rate rises to nearly 80%. The scoring patterns in the figure reinforce this: hammer teams average 1.36 points without a Power Play and increase to 1.64 points when using it, while non-hammer teams score well below 1 point in all cases (fg. 2). Together, these results show that both hammer ownership and Power Play deployment substantially boost a team’s ability to control and capitalize on an end.
 
 <details>
 <summary><strong>Hammer advantage</strong></summary>
