@@ -927,6 +927,214 @@ Build an in-game recommendation tool to evaluate shot and strategy options acros
 
 ### 5 Appendix
 
-#Some other codes or plots (dimension, visualization code, etc)
+<details>
+<summary><strong>GLMM Summary</strong></summary>
+
+<br>
+
+```r
+Generalized linear mixed model fit by maximum likelihood (Laplace Approximation) ['glmerMod']
+ Family: binomial  ( logit )
+Formula: win_end ~ opening_strategy_4th * pp_end + opening_strategy_opp +  
+    net_button + net_2ft + net_4ft + net_6ft + closest_diff +  
+    avg_points_4th + avg_points_opp + (1 | TeamID_4th) + (1 |      OppTeamID)
+   Data: model_df2
+
+      AIC       BIC    logLik -2*log(L)  df.resid 
+   3184.0    3301.5   -1572.0    3144.0      2615 
+
+Scaled residuals: 
+    Min      1Q  Median      3Q     Max 
+-5.0483 -1.1051  0.5409  0.6916  1.3494 
+
+Random effects:
+ Groups     Name        Variance Std.Dev.
+ TeamID_4th (Intercept) 0.10797  0.3286  
+ OppTeamID  (Intercept) 0.03326  0.1824  
+Number of obs: 2635, groups:  TeamID_4th, 25; OppTeamID, 25
+
+Fixed effects:
+                                                 Estimate Std. Error z value Pr(>|z|)    
+(Intercept)                                       0.75906    0.10585   7.171 7.44e-13 ***
+opening_strategy_4thattack_attack                 0.02150    0.22301   0.096   0.9232    
+opening_strategy_4thattack_then_build            -0.04484    0.27360  -0.164   0.8698    
+opening_strategy_4thbuild_then_attack            -0.13594    0.10412  -1.306   0.1917    
+pp_endTRUE                                        0.54725    0.22631   2.418   0.0156 *  
+opening_strategy_oppattack_attack                 0.81261    0.46663   1.741   0.0816 .  
+opening_strategy_oppattack_then_build             0.08090    0.22215   0.364   0.7157    
+opening_strategy_oppbuild_then_attack            -0.23379    0.14580  -1.603   0.1088    
+net_button                                       -0.07349    0.04769  -1.541   0.1233    
+net_2ft                                          -0.11667    0.05506  -2.119   0.0341 *  
+net_4ft                                          -0.01118    0.04993  -0.224   0.8229    
+net_6ft                                           0.04222    0.04867   0.867   0.3857    
+closest_diff                                      0.06915    0.05375   1.287   0.1982    
+avg_points_4th                                    0.18073    0.04397   4.110 3.95e-05 ***
+avg_points_opp                                   -0.24368    0.04873  -5.000 5.73e-07 ***
+opening_strategy_4thattack_attack:pp_endTRUE      0.02601    0.41522   0.063   0.9501    
+opening_strategy_4thattack_then_build:pp_endTRUE -0.31029    0.69159  -0.449   0.6537    
+opening_strategy_4thbuild_then_attack:pp_endTRUE -0.15457    0.25298  -0.611   0.5412    
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+```
+</details>
+
+
+<details>
+<summary><strong>Reduced GLMM Summary</strong></summary>
+
+<br>
+
+```r
+Generalized linear mixed model fit by maximum likelihood (Laplace Approximation) ['glmerMod']
+ Family: binomial  ( logit )
+Formula: win_end ~ opening_strategy_4th * pp_end + opening_strategy_opp +  
+    avg_points_4th + avg_points_opp + (1 | TeamID_4th) + (1 |      OppTeamID)
+   Data: model_df2
+
+      AIC       BIC    logLik -2*log(L)  df.resid 
+   3181.9    3270.1   -1576.0    3151.9      2620 
+
+Scaled residuals: 
+    Min      1Q  Median      3Q     Max 
+-4.6328 -1.1203  0.5467  0.6926  1.3177 
+
+Random effects:
+ Groups     Name        Variance Std.Dev.
+ TeamID_4th (Intercept) 0.10849  0.3294  
+ OppTeamID  (Intercept) 0.03339  0.1827  
+Number of obs: 2635, groups:  TeamID_4th, 25; OppTeamID, 25
+
+Fixed effects:
+                                                 Estimate Std. Error z value Pr(>|z|)    
+(Intercept)                                       0.75806    0.10588   7.159 8.11e-13 ***
+opening_strategy_4thattack_attack                 0.01405    0.22249   0.063   0.9496    
+opening_strategy_4thattack_then_build            -0.05468    0.27305  -0.200   0.8413    
+opening_strategy_4thbuild_then_attack            -0.14295    0.10392  -1.376   0.1690    
+pp_endTRUE                                        0.53170    0.22553   2.357   0.0184 *  
+opening_strategy_oppattack_attack                 0.83591    0.46619   1.793   0.0730 .  
+opening_strategy_oppattack_then_build             0.09212    0.22172   0.415   0.6778    
+opening_strategy_oppbuild_then_attack            -0.23059    0.14548  -1.585   0.1129    
+avg_points_4th                                    0.17942    0.04387   4.090 4.32e-05 ***
+avg_points_opp                                   -0.24048    0.04863  -4.945 7.60e-07 ***
+opening_strategy_4thattack_attack:pp_endTRUE      0.04306    0.41423   0.104   0.9172    
+opening_strategy_4thattack_then_build:pp_endTRUE -0.28471    0.69149  -0.412   0.6805    
+opening_strategy_4thbuild_then_attack:pp_endTRUE -0.13241    0.25243  -0.525   0.5999    
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+```
+</details>
+
+
+<details>
+<summary><strong>GAM Summary</strong></summary>
+
+<br>
+
+```r
+Family: binomial 
+Link function: logit 
+
+Formula:
+win_end ~ opening_strategy_4th * pp_end + opening_strategy_opp + 
+    net_button + net_2ft + net_4ft + net_6ft + s(avg_points_4th, 
+    k = 5) + s(avg_points_opp, k = 5) + s(closest_diff, k = 5)
+
+Parametric coefficients:
+                                                 Estimate Std. Error z value Pr(>|z|)    
+(Intercept)                                       0.75261    0.06873  10.950  < 2e-16 ***
+opening_strategy_4thattack_attack                 0.12047    0.21728   0.554  0.57927    
+opening_strategy_4thattack_then_build            -0.01118    0.26858  -0.042  0.96680    
+opening_strategy_4thbuild_then_attack            -0.07378    0.10129  -0.728  0.46632    
+pp_endTRUE                                        0.58172    0.22326   2.606  0.00917 ** 
+opening_strategy_oppattack_attack                 0.67706    0.46234   1.464  0.14308    
+opening_strategy_oppattack_then_build            -0.05249    0.21663  -0.242  0.80854    
+opening_strategy_oppbuild_then_attack            -0.22273    0.14288  -1.559  0.11902    
+net_button                                       -0.06822    0.04679  -1.458  0.14486    
+net_2ft                                          -0.12417    0.05428  -2.288  0.02216 *  
+net_4ft                                          -0.01018    0.04919  -0.207  0.83611    
+net_6ft                                           0.03043    0.04798   0.634  0.52585    
+opening_strategy_4thattack_attack:pp_endTRUE      0.04120    0.40927   0.101  0.91981    
+opening_strategy_4thattack_then_build:pp_endTRUE -0.26026    0.68110  -0.382  0.70237    
+opening_strategy_4thbuild_then_attack:pp_endTRUE -0.18284    0.24967  -0.732  0.46396    
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Approximate significance of smooth terms:
+                    edf Ref.df Chi.sq  p-value    
+s(avg_points_4th) 1.032  1.063 23.607 1.61e-06 ***
+s(avg_points_opp) 1.002  1.003 30.606  < 2e-16 ***
+s(closest_diff)   1.003  1.007  2.094    0.149    
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+R-sq.(adj) =  0.0319   Deviance explained = 3.16%
+-REML = 1607.6  Scale est. = 1         n = 2635
+```
+</details>
+
+<p align="center">
+  <img src="plots/XGBoost_feature_importance.png" width="450">
+  <br>
+  <em>Figure 3. XGBoost Feature Importance.</em>
+</p>
+
+
+<details>
+<summary><strong>Prospensity Model Summary</strong></summary>
+
+<br>
+
+```r
+# Estimated treatment effect (odds ratio)
+treat_attack_first 
+            1.1597
+
+# 95% confidence interval for treatment effect (odds ratio)
+   2.5 %    97.5 %
+ 0.8785   1.5428
+
+# Propensity score distribution
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max.
+0.0729  0.0827   0.0933  0.1055  0.1118  0.2398
+
+# Stabilized inverse probability weights (before trimming)
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max.
+0.4614  0.9743   0.9860  0.9997  1.0117  1.4276
+
+# Stabilized inverse probability weights (after trimming at 99th percentile)
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max.
+0.4614  0.9743   0.9860  0.9992  1.0117  1.3226
+
+# Model summary (IPW-weighted)
+Call:
+glm(formula = win_end ~ treat_attack_first + opening_strategy_opp + 
+    pp_end + avg_points_4th + avg_points_opp, family = binomial, 
+    data = model_df2, weights = w)
+
+Coefficients:
+                                      Estimate Std. Error z value Pr(>|z|)    
+(Intercept)                            0.71437    0.05218  13.691  < 2e-16 ***
+treat_attack_first                     0.14820    0.14350   1.033 0.301720    
+opening_strategy_oppattack_attack      0.79988    0.44702   1.789 0.073560 .  
+opening_strategy_oppattack_then_build -0.01718    0.19927  -0.086 0.931313    
+opening_strategy_oppbuild_then_attack -0.23585    0.14102  -1.672 0.094426 .  
+pp_endTRUE                             0.46860    0.13645   3.434 0.000595 ***
+avg_points_4th                         0.20257    0.04222   4.799 1.60e-06 ***
+avg_points_opp                        -0.26761    0.04708  -5.684 1.32e-08 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+(Dispersion parameter for binomial family taken to be 1)
+
+    Null deviance: 3266.2  on 2634  degrees of freedom
+Residual deviance: 3172.4  on 2627  degrees of freedom
+AIC: 3188.5
+
+Number of Fisher Scoring iterations: 4
+```
+</details>
+
+
+
 
 
