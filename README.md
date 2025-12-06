@@ -7,6 +7,14 @@ James Chen & Charlie Ko, 12/5/2025
 ## 1. Problem Statement
 In a competitive mixed doubles curling match, the opening plays can quietly shape the final scoring outcome for each end, even though it is hard to tell who is truly leading after only a few  shots. This study aims to identify which early features and strategies most strongly contribute to score in an end, in both Power Play and normal situations, using stone-level data. In particular, we investigate how execution quality, shot selection, and stone position control (e.g., inner-ring/2-ft control) affect end outcomes, and how teams should develop opening strategies to maximize their winning probability for each end, both with or without the hammer.
 
+<p align="center">
+  <img src="plots/swe_gb_hammer_lost.png" width="400">
+  <img src="plots/aus_usa_hammer_won.png" width="400">
+  <br>
+  <em>Figure 1. Shot attempt locations: first vs. second TFO shots.</em>
+</p>
+
+
 **Curling rules can be found [here](https://worldcurling.org/about/curling/).**
 
 ---
@@ -767,7 +775,9 @@ Taken together, these models allow us to examine strategy effectiveness from mul
 
 
 
-### 3. Main Results
+### 3. Results
+
+The team with hammer wins the end about 70% of the time, confirming a clear strategic advantage in mixed doubles curling. This advantage becomes even more significant in Power Play situations, where the hammer win rate rises to nearly 80%. The scoring patterns in the figure reinforce this: hammer teams average 1.36 points without a Power Play and increase to 1.64 points when using it, while non-hammer teams score well below 1 point in all cases (fg. 1). Together, these results show that both hammer ownership and Power Play deployment substantially boost a team’s ability to control and capitalize on an end.
 
 <details>
 <summary><strong>Hammer advantage</strong></summary>
@@ -872,16 +882,36 @@ ggplot(avg_by_combo2,
 
 
 <p align="center">
-  <img src="Hameer and Power Play Usage.png" width="450">
+  <img src="plots/hammer_pp_usage.png" width="450">
   <br>
-  <em>Figure 1. Hameer and Power Play Usage</em>
+  <em>Figure 2. Hammer and Power Play Usage</em>
 </p>
+
+Across both the full Logistic Mixed-Effects Model (GLMM) and the Reduced / Execution-Only GLMM, the results tell a consistent story. Execution quality dominates the labelled opening strategies: the coefficients for execution quality are large and highly significant (e.g., avg_points_4th ≈ 0.18 and avg_points_opp ≈ −0.24, z ≈ 4–5), meaning that teams who execute their early shots well win more ends regardless of which opening pattern they select. Inner-ring control shows up as mildly important in the full GLMM: net_2ft is negative and statistically meaningful (−0.1167, z = −2.12), a counterintuitive direction that suggests early draws to the 2-foot may occur under defensive pressure rather than from a position of advantage. For the strategy labels themselves, none of the hammer’s opening categories differ meaningfully from build_build, the most conservative approach. Also, none are statistically significant, indicating no detectable advantage among the labelled opening patterns once execution and team effects are accounted for. From the opponent’s perspective, aggressive openings do not translate into higher success rates. The estimates even lean toward marginally improving the hammer’s chances, although these patterns are not statistically reliable.
+
+The GAM largely confirms the mixed-effects results. The parametric terms for strategy and board state look very similar to the GLMM, with power play and execution quality remaining the clearest signals, and the opening strategies again showing no meaningful effects. The smooth terms for execution and position are almost linear (edf ≈ 1 for both avg_points_4th and avg_points_opp), with higher hammer execution improving the log-odds of scoring and higher opponent execution reducing it. The smooth for closest_diff is not statistically significant and does not show strong curvature. Overall deviance explained is about 3%, which indicates that while the model captures some structure, there is no hidden nonlinear pattern that dramatically changes the strategic story.
+
+The XGBoost model offers a more flexible, interaction-rich view of the predictors. Its out-of-sample AUC is about 0.59, only modestly above chance, reinforcing that the fourth-shot state contains limited predictive signal on its own. However, the variable-importance profile shows one clear difference from the regression models: closest_diff emerges as the dominant feature, far outweighing execution scores and ring counts. This contrasts with the GLMM and GAM results, where closest_diff showed little significance.
+The likely reason is structural. The GLMM and GAM treat closest_diff as a single linear or smooth effect, but XGBoost can learn thresholds and interactions. For example, cases where being slightly closer only matters when combined with strength in a specific scoring ring or with strong execution quality. These conditional, tactical patterns are common in early-end curling, and tree models can exploit them even when additive models cannot. Aside from this difference, XGBoost confirms earlier findings: execution quality carries most of the usable information, while the labelled opening strategies contribute very little to prediction.
+
+#feature importance plot
+
+The propensity model estimates each team’s propensity score, defined as the probability of choosing an attack-first opening given the context, using power-play status and team identity as predictors. Team identity is included to capture persistent differences in playing style and team strength. These probabilities largely fell between 0.07 and 0.24, showing that attack-first openings are relatively uncommon. The substantial overlap between strategy groups, along with inverse-probability weights mostly near 1, indicates that teams using different openings faced similar conditions and required only minimal reweighting. As a result, the comparison is based on realistic and comparable game situations rather than rare or heavily adjusted cases.
+
+After adjustment, the estimated odds ratio for an attack-first opening is 1.16, with a wide confidence interval that includes 1. This indicates no statistically reliable advantage or disadvantage from choosing an attack-first strategy. In contrast, execution quality for both teams and power-play status remain strongly associated with scoring, suggesting that performance and game context, rather than the opening label itself, primarily drive outcomes.
+
+(Refer to 5.1 Appendix for detailed model summaries and coefficient tables.)
+
+Overall, these results point to a clear conclusion. Early in an end, execution quality matters far more than any scripted or high-risk opening pattern. Small differences in how well the first two shots are thrown have a much larger impact on scoring than whether the team chooses to build or attack. For the team with hammer, the Power Play remains an important tool that reliably increases scoring potential when available. For the non-hammer side, a patient and defensive approach may be the best way to counter the combined advantages of hammer and Power Play.
+
 
 ### 4. Limitation and Further Development
 
 ### 4.1 Limitation
 
 One of the key limitations of this study is the lack of full stone trajectory data. Although we are able to observe final stone coordinates, we cannot reconstruct how each stone moves from frame to frame: its curl, speed profile, or angle from the intended path. Without this information, our model cannot fully distinguish shot quality, difficulty, or tactical intent, all of which are critical in mixed doubles strategy. In addition, the dataset provides limited information about team-level playing tendencies, such as preferred shot types, aggressiveness, or adaptations to score situations. Because these behavioral patterns are only partially observable in the available data, our ability to model team strategy or opponent-specific decision making is inherently restricted.
+
+A further limitation is the simplification of opening strategies into a small set of labeled categories. While useful for analysis, this reduces rich tactical sequences into broad classes that may mask meaningful variation in shot intent or context. As a result, the finding that the opening strategy is not statistically significant could partially reflect this coarse encoding rather than a true lack of strategic effect.
 
 ### 4.2 Further Development
 
