@@ -1074,7 +1074,7 @@ R-sq.(adj) =  0.0319   Deviance explained = 3.16%
 
 
 <details>
-<summary><strong>GAM Summary</strong></summary>
+<summary><strong>XGBoost Summary</strong></summary>
 
 <br>
 
@@ -1083,6 +1083,36 @@ R-sq.(adj) =  0.0319   Deviance explained = 3.16%
   <br>
   <em>Figure 3. XGBoost Feature Importance.</em>
 </p>
+
+```r
+Area under the curve: 0.5884
+
+
+# feature importance stats
+                                   Feature         Gain        Cover   Frequency
+                                    <char>        <num>        <num>       <num>
+ 1:                           closest_diff 0.3650831412 0.3448522992 0.358620690
+ 2:                         avg_points_opp 0.1677878465 0.1857669944 0.127586207
+ 3:                         avg_points_4th 0.1443999956 0.1596783457 0.132758621
+ 4:                                net_4ft 0.0523336075 0.0538155561 0.062068966
+ 5:                            pp_endFALSE 0.0459991576 0.0522832724 0.032758621
+ 6:                                net_2ft 0.0427000506 0.0395013999 0.053448276
+ 7:                            PowerPlay.1 0.0414432347 0.0413942196 0.039655172
+ 8:                             net_button 0.0332121350 0.0274666965 0.032758621
+ 9:                                net_6ft 0.0312019512 0.0144546138 0.050000000
+10: opening_strategy_4th.build_then_attack 0.0269611703 0.0308636922 0.032758621
+11: opening_strategy_opp.build_then_attack 0.0140451373 0.0159980847 0.020689655
+12:                             pp_endTRUE 0.0073409520 0.0094158579 0.005172414
+13:       opening_strategy_4th.build_build 0.0071791431 0.0030309279 0.013793103
+14: opening_strategy_opp.attack_then_build 0.0058804267 0.0027589566 0.010344828
+15:                            PowerPlay.0 0.0036402730 0.0026726768 0.001724138
+16:     opening_strategy_4th.attack_attack 0.0036378398 0.0060118971 0.005172414
+17:     opening_strategy_opp.attack_attack 0.0030919005 0.0059687994 0.003448276
+18:       opening_strategy_opp.build_build 0.0022584445 0.0034242199 0.006896552
+19:                            PowerPlay.2 0.0011024227 0.0002801041 0.006896552
+20: opening_strategy_4th.attack_then_build 0.0007011702 0.0003613859 0.003448276
+                                   Feature         Gain        Cover   Frequency
+```
 
 </details>
 
