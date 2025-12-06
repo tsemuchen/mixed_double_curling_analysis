@@ -1072,12 +1072,19 @@ R-sq.(adj) =  0.0319   Deviance explained = 3.16%
 ```
 </details>
 
+
+<details>
+<summary><strong>GAM Summary</strong></summary>
+
+<br>
+
 <p align="center">
   <img src="plots/XGBoost_feature_importance.png" width="450">
   <br>
   <em>Figure 3. XGBoost Feature Importance.</em>
 </p>
 
+</details>
 
 <details>
 <summary><strong>Prospensity Model Summary</strong></summary>
