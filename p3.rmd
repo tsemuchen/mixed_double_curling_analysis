@@ -1,0 +1,544 @@
+```{r}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(scales)
+library(tidyr)
+library(lme4)
+library(Matrix)
+library(scales)  
+
+
+```
+
+```{r}
+competition  <- read.csv("Competition.csv",  stringsAsFactors = FALSE)
+competitors  <- read.csv("Competitors.csv",  stringsAsFactors = FALSE)
+ends         <- read.csv("Ends.csv",         stringsAsFactors = FALSE)
+games        <- read.csv("Games.csv",        stringsAsFactors = FALSE)
+stones       <- read.csv("Stones.csv",       stringsAsFactors = FALSE)
+teams        <- read.csv("Teams.csv",        stringsAsFactors = FALSE)
+
+fourth_shot  <- read.csv("fourth_shot.csv",  stringsAsFactors = FALSE)
+model_df     <- read.csv("model_df.csv",  stringsAsFactors = FALSE)
+```
+
+```{r}
+#1
+Stones_plus <- stones %>%
+  group_by(CompetitionID, SessionID, GameID, EndID) %>%
+  arrange(ShotID, .by_group = TRUE) %>%
+  mutate(n_stone_thrown = row_number()) %>%
+  ungroup()
+
+Stones_plus <- Stones_plus %>%  
+  left_join(ends) %>% 
+  mutate(PowerPlay = ifelse(is.na(PowerPlay), 0, PowerPlay)) %>% 
+  group_by(CompetitionID, SessionID, GameID, EndID) %>% 
+  mutate(pp_end = sum(PowerPlay) > 0) %>% 
+  ungroup()
+```
+
+```{r}
+#find which team throws first
+end_first <- Stones_plus |>
+  group_by(CompetitionID, SessionID, GameID, EndID) |>
+  slice_min(ShotID, n = 1, with_ties = FALSE) |>
+  summarise(
+    team_first = first(TeamID),
+    .groups = "drop"
+  )
+
+# all teams appearing in each end
+end_team_ids <- Stones_plus |>
+  distinct(CompetitionID, SessionID, GameID, EndID, TeamID)
+
+# map each end to team_first and team_second
+end_teams <- end_team_ids |>
+  left_join(end_first,
+            by = c("CompetitionID", "SessionID", "GameID", "EndID")) |>
+  group_by(CompetitionID, SessionID, GameID, EndID) |>
+  summarise(
+    team_first  = first(team_first),
+    team_second = TeamID[TeamID != first(team_first)][1],
+    .groups = "drop"
+  )
+
+# attach to Stones_plus
+Stones_plus <- Stones_plus |>
+  left_join(end_teams,
+            by = c("CompetitionID", "SessionID", "GameID", "EndID"))
+```
+
+```{r}
+#stone distance from the target
+stone_dist <- function(x, y) {
+  out_of_play <- x %in% c(0, 4095) | y %in% c(0, 4095)
+  d <- sqrt((x - 750)^2 + (y - 800)^2)
+  d[out_of_play] <- NA_real_
+  d
+}
+
+Stones_plus <- Stones_plus |>
+  mutate(
+    stone_1_dist  = stone_dist(stone_1_x,  stone_1_y),
+    stone_2_dist  = stone_dist(stone_2_x,  stone_2_y),
+    stone_3_dist  = stone_dist(stone_3_x,  stone_3_y),
+    stone_4_dist  = stone_dist(stone_4_x,  stone_4_y),
+    stone_5_dist  = stone_dist(stone_5_x,  stone_5_y),
+    stone_6_dist  = stone_dist(stone_6_x,  stone_6_y),
+    stone_7_dist  = stone_dist(stone_7_x,  stone_7_y),
+    stone_8_dist  = stone_dist(stone_8_x,  stone_8_y),
+    stone_9_dist  = stone_dist(stone_9_x,  stone_9_y),
+    stone_10_dist = stone_dist(stone_10_x, stone_10_y),
+    stone_11_dist = stone_dist(stone_11_x, stone_11_y),
+    stone_12_dist = stone_dist(stone_12_x, stone_12_y)
+  )
+
+```
+
+```{r}
+foot_to_units <- 100
+
+r_6ft   <- 6   * foot_to_units  # 600  (outer house)
+r_4ft   <- 4   * foot_to_units  # 400
+r_2ft   <- 2   * foot_to_units  # 200
+r_6inch <- 0.5 * foot_to_units  # 50   (button)
+
+Stones_plus <- Stones_plus |>
+  mutate(
+    # ---- team that throws first: stones 1–6 ----
+    n_button_first = rowSums(
+      cbind(
+        stone_1_dist <= r_6inch,
+        stone_2_dist <= r_6inch,
+        stone_3_dist <= r_6inch,
+        stone_4_dist <= r_6inch,
+        stone_5_dist <= r_6inch,
+        stone_6_dist <= r_6inch
+      ),
+      na.rm = TRUE
+    ),
+    n_2ft_first = rowSums(
+      cbind(
+        stone_1_dist > r_6inch & stone_1_dist <= r_2ft,
+        stone_2_dist > r_6inch & stone_2_dist <= r_2ft,
+        stone_3_dist > r_6inch & stone_3_dist <= r_2ft,
+        stone_4_dist > r_6inch & stone_4_dist <= r_2ft,
+        stone_5_dist > r_6inch & stone_5_dist <= r_2ft,
+        stone_6_dist > r_6inch & stone_6_dist <= r_2ft
+      ),
+      na.rm = TRUE
+    ),
+    n_4ft_first = rowSums(
+      cbind(
+        stone_1_dist > r_2ft & stone_1_dist <= r_4ft,
+        stone_2_dist > r_2ft & stone_2_dist <= r_4ft,
+        stone_3_dist > r_2ft & stone_3_dist <= r_4ft,
+        stone_4_dist > r_2ft & stone_4_dist <= r_4ft,
+        stone_5_dist > r_2ft & stone_5_dist <= r_4ft,
+        stone_6_dist > r_2ft & stone_6_dist <= r_4ft
+      ),
+      na.rm = TRUE
+    ),
+    n_6ft_first = rowSums(
+      cbind(
+        stone_1_dist > r_4ft & stone_1_dist <= r_6ft,
+        stone_2_dist > r_4ft & stone_2_dist <= r_6ft,
+        stone_3_dist > r_4ft & stone_3_dist <= r_6ft,
+        stone_4_dist > r_4ft & stone_4_dist <= r_6ft,
+        stone_5_dist > r_4ft & stone_5_dist <= r_6ft,
+        stone_6_dist > r_4ft & stone_6_dist <= r_6ft
+      ),
+      na.rm = TRUE
+    ),
+
+    # ---- team that throws second: stones 7–12 ----
+    n_button_second = rowSums(
+      cbind(
+        stone_7_dist  <= r_6inch,
+        stone_8_dist  <= r_6inch,
+        stone_9_dist  <= r_6inch,
+        stone_10_dist <= r_6inch,
+        stone_11_dist <= r_6inch,
+        stone_12_dist <= r_6inch
+      ),
+      na.rm = TRUE
+    ),
+    n_2ft_second = rowSums(
+      cbind(
+        stone_7_dist  > r_6inch & stone_7_dist  <= r_2ft,
+        stone_8_dist  > r_6inch & stone_8_dist  <= r_2ft,
+        stone_9_dist  > r_6inch & stone_9_dist  <= r_2ft,
+        stone_10_dist > r_6inch & stone_10_dist <= r_2ft,
+        stone_11_dist > r_6inch & stone_11_dist <= r_2ft,
+        stone_12_dist > r_6inch & stone_12_dist <= r_2ft
+      ),
+      na.rm = TRUE
+    ),
+    n_4ft_second = rowSums(
+      cbind(
+        stone_7_dist  > r_2ft & stone_7_dist  <= r_4ft,
+        stone_8_dist  > r_2ft & stone_8_dist  <= r_4ft,
+        stone_9_dist  > r_2ft & stone_9_dist  <= r_4ft,
+        stone_10_dist > r_2ft & stone_10_dist <= r_4ft,
+        stone_11_dist > r_2ft & stone_11_dist <= r_4ft,
+        stone_12_dist > r_2ft & stone_12_dist <= r_4ft
+      ),
+      na.rm = TRUE
+    ),
+    n_6ft_second = rowSums(
+      cbind(
+        stone_7_dist  > r_4ft & stone_7_dist  <= r_6ft,
+        stone_8_dist  > r_4ft & stone_8_dist  <= r_6ft,
+        stone_9_dist  > r_4ft & stone_9_dist  <= r_6ft,
+        stone_10_dist > r_4ft & stone_10_dist <= r_6ft,
+        stone_11_dist > r_4ft & stone_11_dist <= r_6ft,
+        stone_12_dist > r_4ft & stone_12_dist <= r_6ft
+      ),
+      na.rm = TRUE
+    )
+  )
+
+
+```
+
+```{r}
+```
+
+```{r}
+# which team is in the scoring postition 
+Stones_plus <- Stones_plus |>
+  rowwise() |>
+  mutate(
+    # closest stone for team_first (stones 1–6)
+    closest_first = min(
+      c_across(c(stone_1_dist, stone_2_dist, stone_3_dist,
+                 stone_4_dist, stone_5_dist, stone_6_dist)),
+      na.rm = TRUE
+    ),
+    # closest stone for team_second (stones 7–12)
+    closest_second = min(
+      c_across(c(stone_7_dist, stone_8_dist, stone_9_dist,
+                 stone_10_dist, stone_11_dist, stone_12_dist)),
+      na.rm = TRUE
+    ),
+    # if all distances are NA for a side, min(..., na.rm=TRUE) is Inf -> set to NA
+    closest_first  = ifelse(is.infinite(closest_first),  NA_real_, closest_first),
+    closest_second = ifelse(is.infinite(closest_second), NA_real_, closest_second),
+
+    scoring_team_order = case_when(
+      !is.na(closest_first)  & (is.na(closest_second) | closest_first <= closest_second) ~ "first",
+      !is.na(closest_second) & (is.na(closest_first)  | closest_second <  closest_first) ~ "second",
+      TRUE ~ NA_character_
+    ),
+    scoring_teamID = case_when(
+      scoring_team_order == "first"  ~ team_first,
+      scoring_team_order == "second" ~ team_second,
+      TRUE ~ NA_integer_
+    )
+  ) |>
+  ungroup()
+
+```
+
+```{r}
+Stones_plus <- Stones_plus |>
+  rowwise() |>
+  mutate(
+    # How many FIRST team stones are closer than second's best stone?
+    n_first_closer_than_second = if (!is.na(closest_second)) {
+      sum(c_across(c(stone_1_dist, stone_2_dist, stone_3_dist,
+                     stone_4_dist, stone_5_dist, stone_6_dist)) < closest_second,
+          na.rm = TRUE)
+    } else {
+      NA_integer_
+    },
+
+    # How many SECOND team stones are closer than first's best stone?
+    n_second_closer_than_first = if (!is.na(closest_first)) {
+      sum(c_across(c(stone_7_dist, stone_8_dist, stone_9_dist,
+                     stone_10_dist, stone_11_dist, stone_12_dist)) < closest_first,
+          na.rm = TRUE)
+    } else {
+      NA_integer_
+    },
+
+    # Optional: projected points for the team currently lying shot
+    projected_points_scoring = case_when(
+      scoring_team_order == "first"  ~ n_first_closer_than_second,
+      scoring_team_order == "second" ~ n_second_closer_than_first,
+      TRUE ~ NA_integer_
+    )
+  ) |>
+  ungroup()
+```
+
+```{r}
+#average 
+end_level <- ends %>%
+  group_by(CompetitionID, SessionID, GameID, EndID) %>%
+  summarise(
+    total_points = sum(Result),                          # points in that end (0,1,2,3,...)
+    power_play_used = any(!is.na(PowerPlay)),            # TRUE if 1 or 2 appears
+    .groups = "drop"
+  ) %>% filter(total_points <7)
+
+# Average points per end: power play vs normal
+end_level %>%
+  group_by(power_play_used) %>%
+  summarise(
+    n_ends = n(),
+    avg_points_per_end = mean(total_points)
+  )
+
+plot_data <- end_level %>%
+  count(power_play_used, total_points) %>%          # how many ends with each score
+  group_by(power_play_used) %>%                     # within PP vs no-PP
+  mutate(perc = n / sum(n)) %>%                     # convert to percentage
+  ungroup()
+
+perc_long <- end_level %>%
+  count(power_play_used, total_points) %>%           # count ends
+  group_by(power_play_used) %>%
+  mutate(
+    perc = n / sum(n),                               # fraction
+    perc_label = percent(perc, accuracy = 0.1)       # nice %
+  ) %>%
+  ungroup() %>%
+  arrange(power_play_used, total_points)
+
+pp_table <- end_level %>%
+  count(power_play_used, total_points) %>%          # how many ends of each type
+  group_by(power_play_used) %>%
+  mutate(perc = n / sum(n)) %>%                     # convert to percent
+  ungroup() %>%
+  mutate(
+    PP = if_else(power_play_used, "Yes", "No"),     # row label
+    total_points = as.character(total_points),      # will become column names
+    perc = percent(perc, accuracy = 0.1)            # "12.3%"
+  ) %>%
+  select(PP, total_points, perc) %>%
+  pivot_wider(
+    names_from  = total_points,                     # columns: 0,1,2,3,...
+    values_from = perc,
+    values_fill = "0.0%"                            # if no cases, show 0%
+  ) %>%
+  arrange(desc(PP))       
+
+```
+
+```{r}
+## 1. Average points for the team that deploys the power play
+pp_avg <- ends %>%
+  # keep only rows where this team used a power play (1 or 2)
+  filter(!is.na(PowerPlay)) %>%
+  summarise(avg_points_powerplay = mean(Result))
+
+normal_avg <- ends %>%
+  group_by(CompetitionID, SessionID, GameID, EndID) %>%
+  # keep only ends where *both* teams have PowerPlay == NA
+  filter(all(is.na(PowerPlay))) %>%
+  ungroup() %>%
+  summarise(avg_points_normal = mean(Result))
+
+```
+
+
+```{r}
+
+hammer_by_end <- stones %>%
+  group_by(CompetitionID, SessionID, GameID, EndID) %>%
+  slice_max(order_by = ShotID, n = 1, with_ties = FALSE) %>%  # last shot
+  ungroup() %>%
+  transmute(
+    CompetitionID, SessionID, GameID, EndID,
+    HammerTeamID = TeamID
+  )
+
+ends_with_hammer <- ends %>%
+  left_join(hammer_by_end,
+            by = c("CompetitionID", "SessionID", "GameID", "EndID")) %>%
+  mutate(
+    HasHammer = (TeamID == HammerTeamID)
+  ) %>%
+  group_by(CompetitionID, SessionID, GameID, EndID) %>%
+  mutate(
+    AnyPowerPlay = any(!is.na(PowerPlay))   # TRUE if this end has a PP by someone
+  ) %>%
+  ungroup()
+
+
+avg_hammer <- ends_with_hammer %>%
+  group_by(HasHammer) %>%
+  summarise(
+    avg_points = mean(Result),
+    n_team_ends = n()
+  )
+
+
+avg_by_combo <- ends_with_hammer %>%
+  mutate(
+    Scenario = case_when(
+      # Team that *uses* the power play (what you care about for PP avg)
+      AnyPowerPlay & HasHammer & !is.na(PowerPlay) ~ "Hammer & using power play",
+      
+      # Opponent in an end where the other team used PP
+      AnyPowerPlay & !HasHammer                   ~ "No hammer & during power play",
+      
+      # Ends where no one used PP, hammer side
+      !AnyPowerPlay & HasHammer                   ~ "Hammer & no power play",
+      
+      # Ends where no one used PP, non-hammer side
+      !AnyPowerPlay & !HasHammer                  ~ "No hammer & no power play",
+      
+      TRUE ~ "Other/Check"  # just in case of weird data
+    )
+  ) %>%
+  group_by(Scenario) %>%
+  summarise(
+    avg_points = mean(Result),
+    n_team_ends = n()
+  )
+
+avg_by_combo2 <- avg_by_combo |>
+  mutate(
+    Hammer = case_when(
+      str_starts(Scenario, "Hammer")   ~ "Hammer",
+      str_starts(Scenario, "No hammer") ~ "No hammer"
+    ),
+    PowerPlay = case_when(
+      str_detect(Scenario, "no power play")      ~ "No power play",
+      str_detect(Scenario, "using power play")   ~ "Power play",
+      str_detect(Scenario, "during power play")  ~ "Power play"
+    )
+  ) |>
+  select(PowerPlay, Hammer, avg_points) |>
+  mutate(
+    Hammer   = factor(Hammer,   levels = c("No hammer", "Hammer")),
+    PowerPlay = factor(PowerPlay, levels = c("No power play", "Power play"))
+  )
+```
+
+```{r}
+pd <- position_dodge(width = 0.7)
+
+ggplot(avg_by_combo2,
+       aes(x = PowerPlay, y = avg_points, fill = Hammer)) +
+    geom_col(position = pd, width = 0.7, alpha = 0.7) +
+    geom_text(aes(label = round(avg_points, 3)),
+              position = pd,
+              vjust = -0.4, size = 3) +
+    scale_fill_manual(
+        values = c(
+            "No hammer" = "red",  # red stone
+            "Hammer"    = "gold"   # yellow stone
+        )
+    ) +
+    labs(
+        x = NULL,
+        y = "Average points",
+        fill = "Hammer",
+        title = "Average points by hammer and power play usage"
+    ) +
+    theme_minimal() +
+    theme(
+        panel.grid.major.x = element_blank()
+    )
+```
+
+```{r}
+#Linear Mixed-Effects Regression (LMM)
+
+m1 <- lmer(
+  win_end ~
+    opening_strategy_4th * pp_end +
+    opening_strategy_opp +
+    net_button + net_2ft + net_4ft + net_6ft +
+    closest_diff +
+    avg_points_4th + avg_points_opp +
+    (1 | TeamID_4th) + (1 | OppTeamID),
+  data = model_df
+)
+
+summary(m1)
+```
+
+```{r}
+#Logistic Mixed-Effects Model (GLMM)
+model_df2 <- model_df %>%
+  mutate(
+    opening_strategy_4th = relevel(opening_strategy_4th, ref = "build_build"),
+    opening_strategy_opp = relevel(opening_strategy_opp, ref = "build_build")
+  )
+
+model_df2 <- model_df %>%
+  mutate(
+    net_button    = scale(net_button),
+    net_2ft       = scale(net_2ft),
+    net_4ft       = scale(net_4ft),
+    net_6ft       = scale(net_6ft),
+    closest_diff  = scale(closest_diff),
+    avg_points_4th = scale(avg_points_4th),
+    avg_points_opp = scale(avg_points_opp)
+  )
+
+m_bin <- glmer(
+  win_end ~
+    opening_strategy_4th * pp_end +
+    opening_strategy_opp +
+    net_button + net_2ft + net_4ft + net_6ft +
+    closest_diff +
+    avg_points_4th + avg_points_opp +
+    (1 | TeamID_4th) + (1 | OppTeamID),
+  data = model_df2,
+  family = binomial
+)
+
+summary(m_bin)
+
+```
+
+```{r}
+#Reduced / Execution-Only Model
+m_exec_only <- glmer(
+  win_end ~
+    opening_strategy_4th * pp_end +
+    opening_strategy_opp +
+    avg_points_4th + avg_points_opp +
+    (1 | TeamID_4th) + (1 | OppTeamID),
+  data = model_df2,
+  family = binomial
+)
+summary(m_exec_only)
+```
+```{r}
+hammer_rates <- bind_rows(
+  model_df %>%
+    summarise(
+      scenario = "All ends",
+      hammer_win_rate = mean(win_end),  # win_end = 1 if hammer wins
+      n = n()
+    ),
+  model_df %>%
+    filter(PowerPlay == 1) %>%
+    summarise(
+      scenario = "Power Play ends",
+      hammer_win_rate = mean(win_end),
+      n = n()
+    )
+)
+   
+ggplot(hammer_rates, aes(x = scenario, y = hammer_win_rate)) +
+  geom_col() +
+  geom_text(aes(label = percent(hammer_win_rate, accuracy = 1)),
+            vjust = -0.3, size = 4) +
+  scale_y_continuous(labels = percent_format(accuracy = 1),
+                     limits = c(0, 1)) +
+  labs(
+    title = "Hammer Win Rate: All Ends vs Power Play",
+    x = "",
+    y = "Hammer win rate"
+  ) +
+  theme_minimal()
+```
