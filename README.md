@@ -25,7 +25,7 @@ In a competitive mixed doubles curling match, the opening plays can quietly shap
 The data were collected from games played in the 2026 Connecticut Sports Analytics Symposium competition, downloaded from this [GitHub](https://github.com/CSAS-Data-Challenge/2026) page. Starting from the Stones.csv dataset, we first assign a shot order number within each end, then join this information with Ends.csv to determine whether the end is a power play. Because the team that throws second in an end holds the hammer, identifying the team that throws first allows us to infer hammer ownership for that end.
 
 <details>
-<summary><strong>Library</strong></summary>
+<summary><strong>Set-Up</strong></summary>
 
 <br>
 
@@ -90,6 +90,50 @@ end_teams <- end_team_ids |>
 Stones_plus <- Stones_plus |>
   left_join(end_teams,
             by = c("CompetitionID", "SessionID", "GameID", "EndID"))
+
+# two possible patterns
+pattern_A <- c(2, 8, 3, 9, 4, 10, 5, 11, 6, 12)  # first throw is stone 2
+pattern_B <- c(8, 2, 9, 3, 10, 4, 11, 5, 12, 6)  # first throw is stone 8
+
+# Check stone 2 or 8 is the first throw
+first_throw_info <- Stones_plus %>%
+  group_by(CompetitionID, SessionID, GameID, EndID) %>%
+  # row where the first stone of that end has been thrown
+  filter(n_stone_thrown == 1) %>%
+  dplyr::slice(1) %>%   # in case of any weird duplicates
+  mutate(
+    stone2_in_play = (stone_2_x != 0) |
+                     (stone_2_y != 0),
+    stone8_in_play = (stone_8_x != 0) |
+                     (stone_8_y != 0),
+    # if stone 2 is in play, we use pattern A; otherwise pattern B
+    pattern = if_else(stone2_in_play, "A", "B")
+  ) %>%
+  ungroup() %>%
+  select(CompetitionID, SessionID, GameID, EndID, pattern)
+
+# current stone
+Stones_plus <- Stones_plus %>%
+  # make sure throws are ordered within each end
+  arrange(CompetitionID, SessionID, GameID, EndID, n_stone_thrown) %>%
+  
+  # attach which pattern each end uses
+  left_join(first_throw_info,
+            by = c("CompetitionID", "SessionID", "GameID", "EndID")) %>%
+  
+  # assign stone_i based on pattern and n_stone_thrown
+  mutate(
+    current_stone = case_when(
+      # pre-placed row or no stone thrown yet
+      is.na(n_stone_thrown) | n_stone_thrown <= 0 ~ NA_integer_,
+      
+      pattern == "A" ~ pattern_A[n_stone_thrown],
+      pattern == "B" ~ pattern_B[n_stone_thrown],
+      
+      TRUE ~ NA_integer_   # fallback, should not really happen
+    )
+  ) %>% 
+  mutate(Result = ifelse(n_stone_thrown >= 9, Result, NA))
 ```
 </details>
 
