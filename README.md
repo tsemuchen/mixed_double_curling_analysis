@@ -925,7 +925,7 @@ The propensity model estimates each team’s propensity score, defined as the pr
 
 After adjustment, the estimated odds ratio for an attack-first opening is 1.16, with a wide confidence interval that includes 1. This indicates no statistically reliable advantage or disadvantage from choosing an attack-first strategy. In contrast, execution quality for both teams and power-play status remain strongly associated with scoring, suggesting that performance and game context, rather than the opening label itself, primarily drive outcomes.
 
-(Refer to 5.1 Appendix for detailed model summaries and coefficient tables.)
+**(Refer to 5.1 Appendix for detailed model summaries and coefficient tables.)**
 
 Overall, these results point to a clear conclusion. Early in an end, execution quality matters far more than any scripted or high-risk opening pattern. Small differences in how well the first two shots are thrown have a much larger impact on scoring than whether the team chooses to build or attack. For the team with hammer, the Power Play remains an important tool that reliably increases scoring potential when available. For the non-hammer side, a patient and defensive approach may be the best way to counter the combined advantages of hammer and Power Play.
 
