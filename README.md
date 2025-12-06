@@ -1079,7 +1079,7 @@ R-sq.(adj) =  0.0319   Deviance explained = 3.16%
 <br>
 
 <p align="center">
-  <img src="plots/XGBoost_feature_importance.png" width="450">
+  <img src="plots/XGBoost_feature_importance.png" width="750">
   <br>
   <em>Figure 3. XGBoost Feature Importance.</em>
 </p>
