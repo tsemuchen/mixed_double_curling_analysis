@@ -1145,7 +1145,7 @@ Area under the curve: 0.5884
 </details>
 
 <details>
-<summary><strong>Prospensity Model Summary</strong></summary>
+<summary><strong>Propensity Model Summary</strong></summary>
 
 <br>
 
