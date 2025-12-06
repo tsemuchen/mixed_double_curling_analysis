@@ -8,8 +8,8 @@ James Chen & Charlie Ko, 12/5/2025
 In a competitive mixed doubles curling match, the opening plays can quietly shape the final scoring outcome for each end, even though it is hard to tell who is truly leading after only a few  shots. This study aims to identify which early features and strategies most strongly contribute to score in an end, in both Power Play and normal situations, using stone-level data. In particular, we investigate how execution quality, shot selection, and stone position control (e.g., inner-ring/2-ft control) affect end outcomes, and how teams should develop opening strategies to maximize their winning probability for each end, both with or without the hammer.
 
 <p align="center">
-  <img src="plots/swe_gb_hammer_lost.png" width="800">
-  <img src="plots/aus_usa_hammer_won.png" width="800">
+  <img src="plots/swe_gb_hammer_lost.png" width="700">
+  <img src="plots/aus_usa_hammer_won.png" width="700">
   <br>
   <em>Figure 1. Shot attempt locations: first vs. second TFO shots.</em>
 </p>
