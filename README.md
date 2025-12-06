@@ -530,7 +530,7 @@ We begin with a **generalized linear mixed-effects model (GLMM)**, which account
 
 
 <details>
-<summary><strong>Generalized Linear Mixed-effects ModelGLMM</strong></summary>
+<summary><strong>Generalized Linear Mixed-effects Model (GLMM)</strong></summary>
 
 <br>
 
