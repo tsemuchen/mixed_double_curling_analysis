@@ -951,7 +951,9 @@ Apply visual deep-learning methods to stone-position “images”
 Build an in-game recommendation tool to evaluate shot and strategy options across different scenarios
  - Develop easily interpretable tables that summarize how each team typically performs in different score situations (e.g., tied, down 1, up 2), how aggressive they are with the hammer, and how often they generate steals when trailing.
 
-### 5 Appendix
+## 5 Appendix
+
+### 5.1 Model Detailed Results & Summaries
 
 <details>
 <summary><strong>GLMM Summary</strong></summary>
@@ -1198,6 +1200,272 @@ Number of Fisher Scoring iterations: 4
 </details>
 
 
+### 5.2 Visualization
+
+<details>
+<summary><strong>Dimensions, Empty Sheet, and Final Plot</strong></summary>
+
+<br>
+
+Dimension & Empty Sheet
+```r
+# Make a circle as a polygon
+circle_df <- function(x0, y0, r, n = 360) {
+  theta <- seq(0, 2 * pi, length.out = n)
+  data.frame(
+    x = x0 + r * cos(theta),
+    y = y0 + r * sin(theta)
+  )
+}
+
+# Basic sheet geometry
+sheet_xmin <- 0
+sheet_xmax <- 1500
+sheet_ymin <- 0
+sheet_ymax <- 3000
+
+centerline_x <- 750
+backline_y   <- 200
+tee_y        <- 800
+hogline_y    <- 2900
+
+button_x <- 750
+button_y <- 800
+
+# scale: backline–button ≈ 6 ft -> 600 units ⇒ 1 ft ≈ 100 units
+foot_to_units <- 100
+
+r_6ft   <- 6   * foot_to_units  # outer house
+r_4ft   <- 4   * foot_to_units
+r_2ft   <- 2   * foot_to_units
+r_6inch <- 0.5 * foot_to_units  # button (6 inches)
+
+# Polygons for each filled disk (draw from largest to smallest)
+circ_6ft   <- circle_df(button_x, button_y, r_6ft)
+circ_4ft   <- circle_df(button_x, button_y, r_4ft)
+circ_2ft   <- circle_df(button_x, button_y, r_2ft)
+circ_6inch <- circle_df(button_x, button_y, r_6inch)
+
+
+# Empty sheet plotting
+empty_sheet_plot <- function(title = "Empty Curling Sheet") {
+  ggplot() +
+    # Sheet rectangle
+    geom_rect(
+      aes(xmin = sheet_xmin, xmax = sheet_xmax,
+          ymin = sheet_ymin, ymax = sheet_ymax),
+      fill = "white", color = "black"
+    ) +
+    
+    # House (order matters: largest disk first)
+    geom_polygon(data = circ_6ft,   aes(x, y), fill = "red", alpha = 0.5,  color = NA) +
+    geom_polygon(data = circ_4ft,   aes(x, y), fill = "white",color = NA) +
+    geom_polygon(data = circ_2ft,   aes(x, y), fill = "blue", alpha = 0.5, color = NA) +
+    geom_polygon(data = circ_6inch, aes(x, y), fill = "white",color = NA) +
+    
+    # Key lines
+    geom_vline(xintercept = centerline_x, alpha = 0.5, linetype = "dashed") +   # centerline
+    geom_hline(yintercept = backline_y) +                          # back line
+    geom_hline(yintercept = tee_y, alpha = 0.5, linetype = "longdash") +        # tee line
+    geom_hline(yintercept = hogline_y, linetype = "dotted") +      # hog line
+    
+    coord_fixed(
+      xlim = c(sheet_xmin, sheet_xmax),
+      ylim = c(sheet_ymin, sheet_ymax)
+    ) +
+    theme_void() +
+    ggtitle(title) +
+    theme(plot.title = element_text(hjust = 0.5))
+}
+```
+
+Helper Dataset & Function
+```r
+# Stone info for throw order and team (per end)
+# Helper dataset for plot
+stone_info <- {
+  # Stones that were actually thrown (have current_stone + shot number)
+  thrown <- Stones_plus %>%
+    dplyr::filter(!is.na(current_stone), n_stone_thrown >= 1) %>%
+    dplyr::group_by(
+      CompetitionID, SessionID, GameID, EndID,
+      stone = current_stone
+    ) %>%
+    dplyr::summarise(
+      throw_label = min(n_stone_thrown),   # earliest shot number this stone appears on
+      team_id     = dplyr::first(TeamID),
+      .groups     = "drop"
+    )
+  
+  # "Preplaced" stones for each team in an end (label 0)
+  # e.g., power-play / pre-existing stones before the first recorded throw
+  preplaced <- thrown %>%
+    dplyr::group_by(CompetitionID, SessionID, GameID, EndID, team_id) %>%
+    dplyr::summarise(
+      min_stone = min(stone),
+      max_stone = max(stone),
+      .groups   = "drop"
+    ) %>%
+    dplyr::mutate(
+      # If that team’s stones are from 1–6, treat stone 1 as the "preplaced" slot;
+      # otherwise use stone 7 (the other color set)
+      stone       = dplyr::if_else(max_stone <= 6L, 1L, 7L),
+      throw_label = 0L
+    ) %>%
+    dplyr::select(
+      CompetitionID, SessionID, GameID, EndID,
+      stone, throw_label, team_id
+    )
+  
+  # Combine thrown stones and synthetic "preplaced" stones
+  dplyr::bind_rows(thrown, preplaced)
+}
+
+# Extract stones from one row of Stones_plus
+# Helper function for plot
+stones_from_row <- function(row_df, max_stones = 12) {
+  # current stone (for highlighting)
+  current_stone <- if ("current_stone" %in% names(row_df)) {
+    row_df$current_stone[1]
+  } else if ("stone_i" %in% names(row_df)) {
+    row_df$stone_i[1]
+  } else NA_integer_
+  
+  # keys for this end
+  end_keys <- row_df %>%
+    dplyr::select(CompetitionID, SessionID, GameID, EndID) %>%
+    dplyr::slice(1)
+  
+  # collect stones
+  stones_list <- lapply(1:max_stones, function(i) {
+    x_col <- paste0("stone_", i, "_x")
+    y_col <- paste0("stone_", i, "_y")
+    if (!(x_col %in% names(row_df)) || !(y_col %in% names(row_df))) return(NULL)
+    
+    tibble::tibble(
+      CompetitionID = end_keys$CompetitionID,
+      SessionID     = end_keys$SessionID,
+      GameID        = end_keys$GameID,
+      EndID         = end_keys$EndID,
+      stone         = i,
+      x             = row_df[[x_col]][1],
+      y             = row_df[[y_col]][1]
+    )
+  })
+  
+  stones <- dplyr::bind_rows(stones_list)
+  if (nrow(stones) == 0) return(stones[FALSE, ])
+  
+  stones %>%
+    # attach throw_label (0..10) and team_id for each stone
+    dplyr::left_join(
+      stone_info,
+      by = c("CompetitionID", "SessionID", "GameID", "EndID", "stone")
+    ) %>%
+    # attach team name from Teams
+    dplyr::left_join(
+      Teams,
+      by = c("CompetitionID", "team_id" = "TeamID")
+    ) %>%
+    dplyr::mutate(
+      team_name = Name,
+      status = dplyr::case_when(
+        x == 4095 | y == 4095 ~ "out_of_play",
+        x == 0   & y == 0     ~ "not_thrown",
+        TRUE                  ~ "in_play"
+      ),
+      team_slot  = dplyr::if_else(stone <= 6, "first", "second"),
+      is_current = !is.na(current_stone) & stone == current_stone,
+      label      = throw_label
+    ) %>%
+    dplyr::filter(status == "in_play")
+}
+```
+
+Final Plot
+```r
+plot_curling_shot <- function(row_df, title = NULL) {
+  stones <- stones_from_row(row_df)
+  if (nrow(stones) == 0) return(empty_sheet_plot("No stones in play"))
+  
+  # Keys
+  comp_id <- row_df$CompetitionID[1]
+  end_id  <- row_df$EndID[1]
+  shot_no <- if ("n_stone_thrown" %in% names(row_df)) row_df$n_stone_thrown[1] else NA_integer_
+  
+  # Competition name
+  comp_name <- competition %>%
+    dplyr::filter(CompetitionID == comp_id) %>%
+    dplyr::pull(CompetitionName) %>%
+    dplyr::first()
+  
+  # Team names from the stones in play
+  teams <- stones %>%
+    dplyr::distinct(team_slot, team_name) %>%
+    dplyr::arrange(team_slot) %>%
+    dplyr::pull(team_name)
+  
+  team_a <- ifelse(length(teams) >= 1, teams[1], "Team A")
+  team_b <- ifelse(length(teams) >= 2, teams[2], "Team B")
+  
+  # Build title & subtitle
+  plot_title <- comp_name
+  
+  plot_subtitle <- sprintf(
+    "%s vs. %s — End %s, Shot %s",
+    team_a, team_b, end_id, shot_no
+  )
+  
+  base_plot <- empty_sheet_plot("") +   # remove old title
+    labs(
+      title    = plot_title,
+      subtitle = plot_subtitle
+    ) +
+    theme(
+      plot.title    = element_text(hjust = 0.5, face = "bold", size = 14),
+      plot.subtitle = element_text(hjust = 0.5, size = 11)
+    )
+  
+  # map team_slot -> team_name for legend labels
+  team_labels <- stones %>%
+    dplyr::distinct(team_slot, team_name)
+  
+  fill_values  <- c(first = "gold", second = "darkred")
+  label_values <- setNames(team_labels$team_name, team_labels$team_slot)
+  
+  base_plot +
+    geom_point(
+      data = stones,
+      aes(
+        x = x, y = y,
+        fill   = team_slot,
+        color  = is_current,
+        size   = 4.5,
+        stroke = ifelse(is_current, 1.5, 0)
+      ),
+      shape = 21,
+      alpha = 0.9
+    ) +
+    geom_text(
+      data = dplyr::filter(stones, !is.na(label)),
+      aes(x = x, y = y, label = label),
+      vjust = -1,
+      size = 3
+    ) +
+    scale_fill_manual(
+      name   = "Team",
+      values = fill_values,
+      breaks = c("first", "second"),
+      labels = label_values
+    ) +
+    scale_color_manual(
+      values = c('TRUE' = "green", 'FALSE' = "gray"),
+      guide  = "none"
+    ) +
+    scale_size_identity()
+}
+```
+</details>
 
 
 
