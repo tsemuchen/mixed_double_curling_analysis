@@ -1,0 +1,799 @@
+---
+title: "Stat 479 Project3"
+author: "James Chen"
+date: "2025-11-18"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Library
+```{r}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(ggforce)
+
+library(lme4)
+library(mgcv)
+
+library(caret)
+library(xgboost)
+library(pROC)
+```
+
+
+# Load data
+```{r}
+competition <- read.csv('./CSAS2026_curling/Competition.csv')
+competitors <- read.csv('./CSAS2026_curling/Competitors.csv')
+ends <- read.csv('./CSAS2026_curling/Ends.csv')
+games <- read.csv('./CSAS2026_curling/Games.csv')
+Stones <- read.csv('./CSAS2026_curling/Stones.csv')
+Teams <- read.csv('./CSAS2026_curling/Teams.csv')
+
+# From other file (Columns are added for model fitting)
+Stones_plus <- read.csv("Stones_plus.csv")
+```
+
+
+# Add some helpful columns
+```{r}
+# two possible patterns
+pattern_A <- c(2, 8, 3, 9, 4, 10, 5, 11, 6, 12)  # first throw is stone 2
+pattern_B <- c(8, 2, 9, 3, 10, 4, 11, 5, 12, 6)  # first throw is stone 8
+
+# Check stone 2 or 8 is the first throw
+first_throw_info <- Stones_plus %>%
+  group_by(CompetitionID, SessionID, GameID, EndID) %>%
+  # row where the first stone of that end has been thrown
+  filter(n_stone_thrown == 1) %>%
+  dplyr::slice(1) %>%   # in case of any weird duplicates
+  mutate(
+    stone2_in_play = (stone_2_x != 0) |
+                     (stone_2_y != 0),
+    stone8_in_play = (stone_8_x != 0) |
+                     (stone_8_y != 0),
+    # if stone 2 is in play, we use pattern A; otherwise pattern B
+    pattern = if_else(stone2_in_play, "A", "B")
+  ) %>%
+  ungroup() %>%
+  select(CompetitionID, SessionID, GameID, EndID, pattern)
+
+# current stone
+Stones_plus <- Stones_plus %>%
+  # make sure throws are ordered within each end
+  arrange(CompetitionID, SessionID, GameID, EndID, n_stone_thrown) %>%
+  
+  # attach which pattern each end uses
+  left_join(first_throw_info,
+            by = c("CompetitionID", "SessionID", "GameID", "EndID")) %>%
+  
+  # assign stone_i based on pattern and n_stone_thrown
+  mutate(
+    current_stone = case_when(
+      # pre-placed row or no stone thrown yet
+      is.na(n_stone_thrown) | n_stone_thrown <= 0 ~ NA_integer_,
+      
+      pattern == "A" ~ pattern_A[n_stone_thrown],
+      pattern == "B" ~ pattern_B[n_stone_thrown],
+      
+      TRUE ~ NA_integer_   # fallback, should not really happen
+    )
+  ) %>% 
+  mutate(Result = ifelse(n_stone_thrown >= 9, Result, NA))
+```
+
+
+
+# Dimension of the field and plot empty sheet
+```{r}
+# Make a circle as a polygon
+circle_df <- function(x0, y0, r, n = 360) {
+  theta <- seq(0, 2 * pi, length.out = n)
+  data.frame(
+    x = x0 + r * cos(theta),
+    y = y0 + r * sin(theta)
+  )
+}
+
+# Basic sheet geometry
+sheet_xmin <- 0
+sheet_xmax <- 1500
+sheet_ymin <- 0
+sheet_ymax <- 3000
+
+centerline_x <- 750
+backline_y   <- 200
+tee_y        <- 800
+hogline_y    <- 2900
+
+button_x <- 750
+button_y <- 800
+
+# scale: backline–button ≈ 6 ft -> 600 units ⇒ 1 ft ≈ 100 units
+foot_to_units <- 100
+
+r_6ft   <- 6   * foot_to_units  # outer house
+r_4ft   <- 4   * foot_to_units
+r_2ft   <- 2   * foot_to_units
+r_6inch <- 0.5 * foot_to_units  # button (6 inches)
+
+# Polygons for each filled disk (draw from largest to smallest)
+circ_6ft   <- circle_df(button_x, button_y, r_6ft)
+circ_4ft   <- circle_df(button_x, button_y, r_4ft)
+circ_2ft   <- circle_df(button_x, button_y, r_2ft)
+circ_6inch <- circle_df(button_x, button_y, r_6inch)
+
+
+# Empty sheet plotting
+empty_sheet_plot <- function(title = "Empty Curling Sheet") {
+  ggplot() +
+    # Sheet rectangle
+    geom_rect(
+      aes(xmin = sheet_xmin, xmax = sheet_xmax,
+          ymin = sheet_ymin, ymax = sheet_ymax),
+      fill = "white", color = "black"
+    ) +
+    
+    # House (order matters: largest disk first)
+    geom_polygon(data = circ_6ft,   aes(x, y), fill = "red", alpha = 0.5,  color = NA) +
+    geom_polygon(data = circ_4ft,   aes(x, y), fill = "white",color = NA) +
+    geom_polygon(data = circ_2ft,   aes(x, y), fill = "blue", alpha = 0.5, color = NA) +
+    geom_polygon(data = circ_6inch, aes(x, y), fill = "white",color = NA) +
+    
+    # Key lines
+    geom_vline(xintercept = centerline_x, alpha = 0.5, linetype = "dashed") +   # centerline
+    geom_hline(yintercept = backline_y) +                          # back line
+    geom_hline(yintercept = tee_y, alpha = 0.5, linetype = "longdash") +        # tee line
+    geom_hline(yintercept = hogline_y, linetype = "dotted") +      # hog line
+    
+    coord_fixed(
+      xlim = c(sheet_xmin, sheet_xmax),
+      ylim = c(sheet_ymin, sheet_ymax)
+    ) +
+    theme_void() +
+    ggtitle(title) +
+    theme(plot.title = element_text(hjust = 0.5))
+}
+```
+
+
+# Stone info for throw order and team (per end)
+# Helper dataset for plot
+```{r}
+stone_info <- {
+  # Stones that were actually thrown (have current_stone + shot number)
+  thrown <- Stones_plus %>%
+    dplyr::filter(!is.na(current_stone), n_stone_thrown >= 1) %>%
+    dplyr::group_by(
+      CompetitionID, SessionID, GameID, EndID,
+      stone = current_stone
+    ) %>%
+    dplyr::summarise(
+      throw_label = min(n_stone_thrown),   # earliest shot number this stone appears on
+      team_id     = dplyr::first(TeamID),
+      .groups     = "drop"
+    )
+  
+  # "Preplaced" stones for each team in an end (label 0)
+  # e.g., power-play / pre-existing stones before the first recorded throw
+  preplaced <- thrown %>%
+    dplyr::group_by(CompetitionID, SessionID, GameID, EndID, team_id) %>%
+    dplyr::summarise(
+      min_stone = min(stone),
+      max_stone = max(stone),
+      .groups   = "drop"
+    ) %>%
+    dplyr::mutate(
+      # If that team’s stones are from 1–6, treat stone 1 as the "preplaced" slot;
+      # otherwise use stone 7 (the other color set)
+      stone       = dplyr::if_else(max_stone <= 6L, 1L, 7L),
+      throw_label = 0L
+    ) %>%
+    dplyr::select(
+      CompetitionID, SessionID, GameID, EndID,
+      stone, throw_label, team_id
+    )
+  
+  # Combine thrown stones and synthetic "preplaced" stones
+  dplyr::bind_rows(thrown, preplaced)
+}
+
+```
+
+
+# Extract stones from one row of Stones_plus
+# Helper function for plot
+```{r}
+stones_from_row <- function(row_df, max_stones = 12) {
+  # current stone (for highlighting)
+  current_stone <- if ("current_stone" %in% names(row_df)) {
+    row_df$current_stone[1]
+  } else if ("stone_i" %in% names(row_df)) {
+    row_df$stone_i[1]
+  } else NA_integer_
+  
+  # keys for this end
+  end_keys <- row_df %>%
+    dplyr::select(CompetitionID, SessionID, GameID, EndID) %>%
+    dplyr::slice(1)
+  
+  # collect stones
+  stones_list <- lapply(1:max_stones, function(i) {
+    x_col <- paste0("stone_", i, "_x")
+    y_col <- paste0("stone_", i, "_y")
+    if (!(x_col %in% names(row_df)) || !(y_col %in% names(row_df))) return(NULL)
+    
+    tibble::tibble(
+      CompetitionID = end_keys$CompetitionID,
+      SessionID     = end_keys$SessionID,
+      GameID        = end_keys$GameID,
+      EndID         = end_keys$EndID,
+      stone         = i,
+      x             = row_df[[x_col]][1],
+      y             = row_df[[y_col]][1]
+    )
+  })
+  
+  stones <- dplyr::bind_rows(stones_list)
+  if (nrow(stones) == 0) return(stones[FALSE, ])
+  
+  stones %>%
+    # attach throw_label (0..10) and team_id for each stone
+    dplyr::left_join(
+      stone_info,
+      by = c("CompetitionID", "SessionID", "GameID", "EndID", "stone")
+    ) %>%
+    # attach team name from Teams
+    dplyr::left_join(
+      Teams,
+      by = c("CompetitionID", "team_id" = "TeamID")
+    ) %>%
+    dplyr::mutate(
+      team_name = Name,
+      status = dplyr::case_when(
+        x == 4095 | y == 4095 ~ "out_of_play",
+        x == 0   & y == 0     ~ "not_thrown",
+        TRUE                  ~ "in_play"
+      ),
+      team_slot  = dplyr::if_else(stone <= 6, "first", "second"),
+      is_current = !is.na(current_stone) & stone == current_stone,
+      label      = throw_label
+    ) %>%
+    dplyr::filter(status == "in_play")
+}
+```
+
+# Plot sheet + stones for a single row
+```{r}
+plot_curling_shot <- function(row_df, title = NULL) {
+  stones <- stones_from_row(row_df)
+  if (nrow(stones) == 0) return(empty_sheet_plot("No stones in play"))
+  
+  # Keys
+  comp_id <- row_df$CompetitionID[1]
+  end_id  <- row_df$EndID[1]
+  shot_no <- if ("n_stone_thrown" %in% names(row_df)) row_df$n_stone_thrown[1] else NA_integer_
+  
+  # Competition name
+  comp_name <- competition %>%
+    dplyr::filter(CompetitionID == comp_id) %>%
+    dplyr::pull(CompetitionName) %>%
+    dplyr::first()
+  
+  # Team names from the stones in play
+  teams <- stones %>%
+    dplyr::distinct(team_slot, team_name) %>%
+    dplyr::arrange(team_slot) %>%
+    dplyr::pull(team_name)
+  
+  team_a <- ifelse(length(teams) >= 1, teams[1], "Team A")
+  team_b <- ifelse(length(teams) >= 2, teams[2], "Team B")
+  
+  # Build title & subtitle
+  plot_title <- comp_name
+  
+  plot_subtitle <- sprintf(
+    "%s vs. %s — End %s, Shot %s",
+    team_a, team_b, end_id, shot_no
+  )
+  
+  base_plot <- empty_sheet_plot("") +   # remove old title
+    labs(
+      title    = plot_title,
+      subtitle = plot_subtitle
+    ) +
+    theme(
+      plot.title    = element_text(hjust = 0.5, face = "bold", size = 14),
+      plot.subtitle = element_text(hjust = 0.5, size = 11)
+    )
+  
+  # map team_slot -> team_name for legend labels
+  team_labels <- stones %>%
+    dplyr::distinct(team_slot, team_name)
+  
+  fill_values  <- c(first = "gold", second = "darkred")
+  label_values <- setNames(team_labels$team_name, team_labels$team_slot)
+  
+  base_plot +
+    geom_point(
+      data = stones,
+      aes(
+        x = x, y = y,
+        fill   = team_slot,
+        color  = is_current,
+        size   = 4.5,
+        stroke = ifelse(is_current, 1.5, 0)
+      ),
+      shape = 21,
+      alpha = 0.9
+    ) +
+    geom_text(
+      data = dplyr::filter(stones, !is.na(label)),
+      aes(x = x, y = y, label = label),
+      vjust = -1,
+      size = 3
+    ) +
+    scale_fill_manual(
+      name   = "Team",
+      values = fill_values,
+      breaks = c("first", "second"),
+      labels = label_values
+    ) +
+    scale_color_manual(
+      values = c('TRUE' = "green", 'FALSE' = "gray"),
+      guide  = "none"
+    ) +
+    scale_size_identity()
+}
+```
+
+
+# test ploting
+```{r}
+for (i in 0:10){
+  print(plot_curling_shot(Stones_plus[10 * i + 4, ]))
+}
+```
+
+# row 74, 84
+```{r}
+for (i in 7:8){
+  print(plot_curling_shot(Stones_plus[10 * i + 4, ]))
+  print(plot_curling_shot(Stones_plus[10 * i + 10, ]))
+}
+```
+
+
+# Extract opening strategies
+```{r}
+stones_type <- Stones_plus %>%
+  mutate(
+    task_type = case_when(
+      Task %in% c(0, 5)           ~ "draw",        # Draw, Freeze
+      Task %in% c(1, 2)           ~ "guard",       # Front, Guard
+      Task %in% c(6, 7, 8, 9, 10) ~ "hit",         # Take-out variants, clearing
+      Task %in% c(3, 4)           ~ "tap_soft",    # Raise / Tap-back, Wick / Soft peel
+      Task == 11                  ~ "through",
+      Task == 13                  ~ "nostat",
+      TRUE                        ~ "other"
+    )
+  )
+
+opening_by_team_end <- stones_type %>%
+  group_by(CompetitionID, SessionID, GameID, EndID, TeamID) %>%
+  arrange(ShotID, .by_group = TRUE) %>%
+  dplyr::slice(1:2) %>%                       # first two stones this team throws in this end
+  summarise(
+    first_type  = first(task_type),
+    second_type = nth(task_type, 2),
+    opening_pair  = paste(first_type, second_type, sep = "_"),
+    opening_strategy = case_when(
+      first_type  %in% c("draw", "guard") &
+      second_type %in% c("draw", "guard") ~ "build_build",        # both stones building
+
+      first_type  %in% c("hit", "tap_soft") &
+      second_type %in% c("hit", "tap_soft") ~ "attack_attack",    # both stones attacking
+
+      first_type  %in% c("draw", "guard") &
+      second_type %in% c("hit", "tap_soft") ~ "build_then_attack",
+
+      first_type  %in% c("hit", "tap_soft") &
+      second_type %in% c("draw", "guard") ~ "attack_then_build",
+
+      TRUE ~ "other"
+    ),
+    
+    # execution summary
+      avg_points   = mean(Points, na.rm = TRUE),
+      min_points   = min(Points, na.rm = TRUE),
+    .groups = "drop"
+  )
+```
+
+ 
+# Narrow down to fourth_shot dataset
+```{r}
+# Extract 4th shot in each end
+fourth_shot <- Stones_plus %>%
+  filter(n_stone_thrown == 4) %>% 
+  rename(TeamID_4th = TeamID,
+         score_diff = point_diff)   
+
+# Add opening strategy for the 4th-shot team
+fourth_shot <- fourth_shot %>%
+  left_join(
+    opening_by_team_end %>%
+      rename(
+        TeamID_4th          = TeamID,
+        first_type_4th    = first_type,
+        second_type_4th   = second_type,
+        opening_pair_4th    = opening_pair,
+        opening_strategy_4th = opening_strategy,
+        
+        avg_points_4th = avg_points,
+        min_points_4th = min_points
+      ),
+    by = c("CompetitionID", "SessionID", "GameID", "EndID", "TeamID_4th")
+  )
+
+# Add opponent opening strategy with a second join
+fourth_shot <- fourth_shot %>%
+  # join opening info for *all* teams in that end
+  left_join(
+    opening_by_team_end %>%
+      rename(
+        OppTeamID             = TeamID,
+        first_type_opp        = first_type,
+        second_type_opp       = second_type,
+        opening_pair_opp      = opening_pair,
+        opening_strategy_opp  = opening_strategy,
+        
+        avg_points_opp = avg_points,
+        min_points_opp = min_points
+      ),
+    by = c("CompetitionID", "SessionID", "GameID", "EndID")
+  ) %>%
+  # keep only the row where OppTeamID is actually the *other* team
+  filter(OppTeamID != TeamID_4th)
+
+# Add some net columns 
+# (second - first) since we are using the perspective of hammer team.
+MAX_DIST <- 4095 # assigned a large dist for all stones out-of-play situation
+
+fourth_shot <- fourth_shot %>% 
+  mutate(net_button = n_button_second - n_button_first,
+         net_2ft = n_2ft_second - n_2ft_first,
+         net_4ft = n_4ft_second - n_4ft_first,
+         net_6ft = n_6ft_second - n_6ft_first,
+         net_house = net_2ft + net_4ft + net_6ft,
+         closest_first  = if_else(is.na(closest_first),  MAX_DIST, closest_first),
+         closest_second = if_else(is.na(closest_second), MAX_DIST, closest_second),
+         closest_diff   = closest_first - closest_second) # positive = better
+```
+
+
+# Construct model_df dataset, ready for model fitting
+```{r}
+model_df <- fourth_shot %>%
+  # some light recoding / extra targets
+  mutate(
+    opening_strategy_4th = factor(opening_strategy_4th),
+    opening_strategy_opp = factor(opening_strategy_opp),
+    pp_end               = as.logical(pp_end),
+    PowerPlay            = factor(PowerPlay),   # if coded 0/1/2 or "", 1, 2
+    win_end              = as.integer(score_diff > 0),   # hammer team scores
+    big_end              = as.integer(score_diff >= 2)   # 2+ points for hammer
+  ) %>%
+  select(
+    # IDs
+    CompetitionID, SessionID, GameID, EndID,
+    TeamID_4th, OppTeamID,
+
+    # Strategy (both teams)
+    opening_strategy_4th, opening_strategy_opp,
+    first_type_4th,  second_type_4th,
+    first_type_opp,  second_type_opp,
+    PowerPlay, pp_end,
+
+    # Board state: zone counts (raw)
+    n_button_first, n_button_second,
+    n_2ft_first,    n_2ft_second,
+    n_4ft_first,    n_4ft_second,
+    n_6ft_first,    n_6ft_second,
+    closest_first,  closest_second,
+
+    # Board state: net summaries
+    net_button, net_2ft, net_4ft, net_6ft,
+    net_house, closest_diff,
+
+    # Execution quality of first two stones
+    avg_points_4th, min_points_4th,
+    avg_points_opp, min_points_opp,
+
+    # Outcomes
+    score_diff, win_end, big_end
+  )
+
+# Remove "other" cases (size too small)
+model_df <- model_df %>%
+  filter(
+    opening_strategy_4th != "other",
+    opening_strategy_opp != "other"
+  )
+```
+
+
+# Some checks (can be expanded to EDA)
+```{r}
+table(model_df$opening_strategy_4th, model_df$pp_end)
+hist(model_df$score_diff, breaks = 20)
+table(model_df$win_end)
+```
+
+
+# Linear Mixed-Effects Regression (LMM)
+```{r}
+m1 <- lmer(
+  win_end ~
+    opening_strategy_4th * pp_end +
+    opening_strategy_opp +
+    net_button + net_2ft + net_4ft + net_6ft +
+    closest_diff +
+    avg_points_4th + avg_points_opp +
+    (1 | TeamID_4th) + (1 | OppTeamID),
+  data = model_df
+)
+
+summary(m1)
+```
+
+
+# Logistic Mixed-Effects Model (GLMM)
+```{r}
+model_df2 <- model_df %>%
+  mutate(
+    opening_strategy_4th = relevel(opening_strategy_4th, ref = "build_build"),
+    opening_strategy_opp = relevel(opening_strategy_opp, ref = "build_build")
+  )
+
+model_df2 <- model_df2 %>%
+  mutate(
+    net_button    = scale(net_button),
+    net_2ft       = scale(net_2ft),
+    net_4ft       = scale(net_4ft),
+    net_6ft       = scale(net_6ft),
+    closest_diff  = scale(closest_diff),
+    avg_points_4th = scale(avg_points_4th),
+    avg_points_opp = scale(avg_points_opp)
+  )
+
+m_bin <- glmer(
+  win_end ~
+    opening_strategy_4th * pp_end +
+    opening_strategy_opp +
+    net_button + net_2ft + net_4ft + net_6ft +
+    closest_diff +
+    avg_points_4th + avg_points_opp +
+    (1 | TeamID_4th) + (1 | OppTeamID),
+  data = model_df2,
+  family = binomial
+)
+
+summary(m_bin)
+```
+
+
+# Reduced / Execution-Only Model
+```{r}
+m_exec_only <- glmer(
+  win_end ~
+    opening_strategy_4th * pp_end +
+    opening_strategy_opp +
+    avg_points_4th + avg_points_opp +
+    (1 | TeamID_4th) + (1 | OppTeamID),
+  data = model_df2,
+  family = binomial
+)
+summary(m_exec_only)
+```
+
+
+# Generalized Additive Model
+```{r}
+gam1 <- gam(
+  win_end ~
+    opening_strategy_4th * pp_end +
+    opening_strategy_opp +
+    net_button + net_2ft + net_4ft + net_6ft +  # linear terms
+    s(avg_points_4th, k = 5) +
+    s(avg_points_opp, k = 5) +
+    s(closest_diff,   k = 5),
+  data   = model_df2,
+  family = binomial(link = "logit"),
+  method = "REML"
+)
+
+summary(gam1)
+plot(gam1, pages = 1, shade = TRUE)
+```
+
+
+# XGBoost
+```{r}
+# Start from model_df2
+boost_df <- model_df2 %>%
+  select(
+    win_end,
+    opening_strategy_4th, opening_strategy_opp,
+    pp_end, PowerPlay,
+    net_button, net_2ft, net_4ft, net_6ft,
+    closest_diff,
+    avg_points_4th, avg_points_opp
+  )
+
+# Ensure outcome is numeric 0/1
+boost_df$win_end <- as.numeric(boost_df$win_end)
+
+# One-hot encode factors (opening strategies, pp_end, PowerPlay)
+dummies <- dummyVars(win_end ~ ., data = boost_df)
+X <- predict(dummies, newdata = boost_df)
+y <- boost_df$win_end
+
+
+# train-test split
+set.seed(479)
+
+train_idx <- createDataPartition(y, p = 0.8, list = FALSE)
+X_train <- X[train_idx, ]
+y_train <- y[train_idx]
+X_test  <- X[-train_idx, ]
+y_test  <- y[-train_idx]
+
+dtrain <- xgb.DMatrix(as.matrix(X_train), label = y_train)
+dtest  <- xgb.DMatrix(as.matrix(X_test),  label = y_test)
+
+# Train
+params <- list(
+  objective = "binary:logistic",
+  eval_metric = "logloss",
+  max_depth = 3,
+  eta = 0.05,
+  subsample = 0.8,
+  colsample_bytree = 0.8
+)
+
+watchlist <- list(
+  train = dtrain,
+  eval  = dtest
+)
+
+set.seed(479)
+bst <- xgb.train(
+  params  = params,
+  data    = dtrain,
+  nrounds = 400,
+  watchlist = watchlist,
+  early_stopping_rounds = 30,
+  verbose = 1
+)
+
+# Evaluate and feature importance
+pred_prob <- predict(bst, dtest)
+roc_obj <- roc(y_test, pred_prob)
+auc_val <- auc(roc_obj)
+auc_val
+
+imp <- xgb.importance(model = bst)
+print(imp)
+xgb.plot.importance(imp, top_n = 20)
+```
+
+
+# Prospensity model
+```{r}
+  ## Binary treatment: attack first vs build first
+  model_df2 <- model_df2 %>%
+    mutate(
+      treat_attack_first = ifelse(
+        opening_strategy_4th %in% c("attack_attack", "attack_then_build"),
+        1, 0
+      )
+    )
+  
+  # Propensity model
+  ps_model <- glm(
+    treat_attack_first ~ pp_end + PowerPlay + TeamID_4th + OppTeamID,
+    family = binomial,
+    data   = model_df2
+  )
+  
+  # Compute stabilized weights
+  ps <- predict(ps_model, type = "response")
+  
+  p_t <- mean(model_df2$treat_attack_first)
+  
+  model_df2$w <- ifelse(
+    model_df2$treat_attack_first == 1,
+    p_t / ps,
+    (1 - p_t) / (1 - ps)
+  )
+  
+  # Trim extreme weights
+  cap <- quantile(model_df2$w, 0.99)
+  model_df2$w <- pmin(model_df2$w, cap)
+  
+  # Weighted outcome model (causal estimate)
+  glm_w <- glm(
+    win_end ~ treat_attack_first + opening_strategy_opp + pp_end +
+              avg_points_4th + avg_points_opp,
+    family  = binomial,
+    data    = model_df2,
+    weights = w
+  )
+  
+  summary(glm_w)
+  
+  # Effect size (odds ratio)
+  exp(coef(glm_w)["treat_attack_first"])
+  exp(confint(glm_w)["treat_attack_first", ])
+  
+  
+  ## Compute propensity scores + plot
+  ps <- predict(ps_model, type = "response")
+  summary(ps)
+  
+  
+  hist(ps[model_df2$treat_attack_first == 1], breaks = 30, col = rgb(1,0,0,0.4),
+       main = "Propensity Score Overlap", xlab = "Propensity")
+  hist(ps[model_df2$treat_attack_first == 0], breaks = 30, col = rgb(0,0,1,0.4), add = TRUE)
+  legend("topright", c("Attack-first", "Build-first"),
+         fill = c(rgb(1,0,0,0.4), rgb(0,0,1,0.4)))
+  
+  
+  ## Compute stabilized inverse probability weights
+  p_t <- mean(model_df2$treat_attack_first)
+  
+  w <- ifelse(
+    model_df2$treat_attack_first == 1,
+    p_t / ps,
+    (1 - p_t) / (1 - ps)
+  )
+  
+  summary(w)
+  
+  # Trimming extreme weights
+  cap <- quantile(w, 0.99)
+  w <- pmin(w, cap)
+  
+  model_df2$w <- w
+  summary(model_df2$w)
+  
+  
+  ## Fit weighted outcome model
+  glm_w <- glm(
+    win_end ~
+      treat_attack_first +
+      opening_strategy_opp +
+      pp_end +
+      avg_points_4th + avg_points_opp,
+    family  = binomial,
+    data    = model_df2,
+    weights = w
+  )
+  
+  summary(glm_w)
+```
+
+
+
+```{r}
+
+```
+
+
+
+
