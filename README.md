@@ -18,22 +18,6 @@ In a competitive mixed doubles curling match, the opening plays can quietly shap
 
 ---
 
-
-===============delete this=================
-
-<details>
-<summary><strong>Extract opening strategies</strong></summary>
-
-<br>
-
-```r
-code
-```
-</details>
-
-===========================================
-
-
 ## 2. Data and Methodology
 
 ### 2.1  Reconstructing End States From Stone-Level Data
@@ -892,8 +876,6 @@ The GAM largely confirms the mixed-effects results. The parametric terms for str
 
 The XGBoost model offers a more flexible, interaction-rich view of the predictors. Its out-of-sample AUC is about 0.59, only modestly above chance, reinforcing that the fourth-shot state contains limited predictive signal on its own. However, the variable-importance profile shows one clear difference from the regression models: closest_diff emerges as the dominant feature, far outweighing execution scores and ring counts. This contrasts with the GLMM and GAM results, where closest_diff showed little significance.
 The likely reason is structural. The GLMM and GAM treat closest_diff as a single linear or smooth effect, but XGBoost can learn thresholds and interactions. For example, cases where being slightly closer only matters when combined with strength in a specific scoring ring or with strong execution quality. These conditional, tactical patterns are common in early-end curling, and tree models can exploit them even when additive models cannot. Aside from this difference, XGBoost confirms earlier findings: execution quality carries most of the usable information, while the labelled opening strategies contribute very little to prediction.
-
-#feature importance plot
 
 The propensity model estimates each team’s propensity score, defined as the probability of choosing an attack-first opening given the context, using power-play status and team identity as predictors. Team identity is included to capture persistent differences in playing style and team strength. These probabilities largely fell between 0.07 and 0.24, showing that attack-first openings are relatively uncommon. The substantial overlap between strategy groups, along with inverse-probability weights mostly near 1, indicates that teams using different openings faced similar conditions and required only minimal reweighting. As a result, the comparison is based on realistic and comparable game situations rather than rare or heavily adjusted cases.
 
