@@ -951,7 +951,7 @@ Apply visual deep-learning methods to stone-position “images”
 Build an in-game recommendation tool to evaluate shot and strategy options across different scenarios
  - Develop easily interpretable tables that summarize how each team typically performs in different score situations (e.g., tied, down 1, up 2), how aggressive they are with the hammer, and how often they generate steals when trailing.
 
-## 5 Appendix
+## 5. Appendix
 
 ### 5.1 Model Detailed Results & Summaries
 
