@@ -1,7 +1,5 @@
 # Opening-State Modeling of End Outcomes in Mixed Doubles Curling
 
-James Chen & Charlie Ko, 12/5/2025
-
 ---
 
 ## 1. Problem Statement
